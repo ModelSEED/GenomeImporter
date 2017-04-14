@@ -1,0 +1,41 @@
+#
+# define display information
+#
+name: Import SEED or PATRIC genomes
+tooltip: |
+    Import genomes from the SEED or PATRIC database
+screenshots: []
+
+icon: null
+
+#
+# define a set of similar methods that might be useful to the user
+#
+suggestions:
+    apps:
+        related:
+            []
+        next:
+            []
+    methods:
+        related:
+            []
+        next:
+            [build_metabolic_model]
+
+#
+# Configure the display and description of parameters
+#
+parameters :
+    genome_ids :
+        ui-name : |
+            Genome IDs
+        short-hint : |
+            IDs of genomes to be imported with ; or | or line ending as a delimiter
+    source :
+        ui-name : |
+            Genome source
+        short-hint : |
+            Source database from which the genomes should be imported
+description : |
+    <p>This is a method designed to permit a user to import a genome from SEED, PATRIC, or RAST.</p>

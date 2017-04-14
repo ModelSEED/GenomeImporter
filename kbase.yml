@@ -1,0 +1,15 @@
+module-name:
+    GenomeImporter
+
+module-description:
+    A module for importing genomes into KBase from SEED, PATRIC, and RAST
+
+service-language:
+    perl
+
+module-version:
+    0.0.1
+
+owners:
+    [chenry]
+
