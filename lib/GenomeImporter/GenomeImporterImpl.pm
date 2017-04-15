@@ -469,6 +469,15 @@ sub save_assembly {
 	return $assemblyref;
 }
 
+sub util_initialize_call {
+	my ($self,$params,$ctx) = @_;
+	print "Import parameters:".Bio::KBase::ObjectAPI::utilities::TOJSON($params,1);
+	if (defined($ctx)) {
+		Bio::KBase::kbaseenv::initialize_call($ctx);
+	}
+	return $params;
+}
+
 #END_HEADER
 
 sub new
@@ -563,6 +572,7 @@ sub import_external_genome
     my($output);
     #BEGIN import_external_genome
     my($args) = @_;
+	$self->util_initialize_call($params,$ctx);
 	$args = Bio::KBase::utilities::args($args,["genome_ids","workspace","source"],{});
     my $genomes = [split(/[\n;\|]+/,$args->{genome_ids})];
     for (my $i=0; $i<@{$genomes};$i++) {
