@@ -172,7 +172,8 @@ sub get_PATRIC_genome {
 		if (defined($id)) {		
 			my $ftrobj = {id => $id,type => "CDS",aliases=>[]};		
 			if (defined($data->{start})) {
-				$ftrobj->{location} = [[$data->{sequence_id},$data->{start}+0,$data->{strand},$data->{na_length}]];
+				$ftrobj->{location} = [[$data->{sequence_id},$data->{start},$data->{strand},$data->{na_length}]];
+				$ftrobj->{location}->[0]->[1] += 0;
 			}
 			if (defined($data->{feature_type})) {
 				$ftrobj->{type} = $data->{feature_type};
