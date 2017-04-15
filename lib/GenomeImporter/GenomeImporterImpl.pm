@@ -445,7 +445,7 @@ sub save_assembly {
 	my $filename = Bio::KBase::utilities::conf("GenomeImporter","scratch")."/".$args->{name}.".fa";
 	open(my $fo, ">", $filename) || die "Could not open file ".$filename;
 	foreach my $contigid (keys(%{$args->{data}})) {
-		print $fo "<".$contigid."\n";
+		print $fo ">".$contigid."\n";
 		my $sequence = $args->{data}->{$contigid};
 		my $seq_len = length($sequence);
 		for (my $i = 0; $i < $seq_len; $i += 60) {
