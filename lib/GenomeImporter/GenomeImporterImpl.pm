@@ -425,6 +425,8 @@ sub save_genome {
 		name => $args->{data}->{id}
 	});
 	my $ga = new GenomeAnnotationAPI::GenomeAnnotationAPIClient(Bio::KBase::utilities::conf("GenomeImporter","call_back_url"));
+	$args->{data}->{genetic_code} += 0;
+	$args->{data}->{dna_size} += 0;
 	my $gaout = $ga->save_one_genome_v1({
 		workspace => $args->{workspace},
         name => $args->{name},
