@@ -71,7 +71,7 @@ sub get_PATRIC_genome {
 		taxonomy => join(":",@{$data->{taxon_lineage_names}}),
 		gc_content => $data->{gc_content},
 		complete => 1,
-		publications => [$data->{publication}],
+		publications => [],
 		features => []
 	};
 	#Retrieving feature information
