@@ -253,6 +253,9 @@ sub get_PATRIC_genome {
 					};
 				}
 			}
+			if (defined($ftrobj->{ontology_terms})) {
+				delete $ftrobj->{ontology_terms};
+			}
 			push(@{$genome->{features}},$ftrobj);
 		}
 	}
