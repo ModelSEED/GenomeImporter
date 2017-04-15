@@ -20,8 +20,7 @@
             "textarea_options" : {
                  "n_rows" : 10
             }
-        },
-        {
+        },{
             "id": "source",
             "optional": false,
             "advanced": true,
@@ -29,32 +28,31 @@
             "default_values": [ "none" ],
             "field_type": "dropdown",
             "dropdown_options": {
-	    	"options": [
-				{
-					"value": "pubseed",
-					"display": "PubSEED (http://pubseed.theseed.org/)",
-					"id": "pubseed",
-					"ui-name": "PubSEED"
-				},
-				{
-					"value": "coreseed",
-					"display": "CoreSEED (highly curated representative genomes)",
-					"id": "coreseed",
-					"ui-name": "CoreSEED"
-				},
-				{
-					"value": "patric",
-					"display": "PATRIC (https://www.patricbrc.org/)",
-					"id": "patric",
-					"ui-name": "PATRIC"
-				},{
-					"value": "patricrefseq",
-					"display": "PATRIC RefSeq (https://www.patricbrc.org/)",
-					"id": "patricrefseq",
-					"ui-name": "patricrefseq"
-				}
-			]
-        }
+				"options": [
+					{
+						"value": "pubseed",
+						"display": "PubSEED (http://pubseed.theseed.org/)",
+						"id": "pubseed",
+						"ui-name": "PubSEED"
+					},{
+						"value": "coreseed",
+						"display": "CoreSEED (highly curated representative genomes)",
+						"id": "coreseed",
+						"ui-name": "CoreSEED"
+					},{
+						"value": "patric",
+						"display": "PATRIC (https://www.patricbrc.org/)",
+						"id": "patric",
+						"ui-name": "PATRIC"
+					},{
+						"value": "patricrefseq",
+						"display": "PATRIC RefSeq (https://www.patricbrc.org/)",
+						"id": "patricrefseq",
+						"ui-name": "patricrefseq"
+					}
+				]
+			}
+		}
     ],
     "behavior": {
         "service-mapping": {
@@ -65,12 +63,10 @@
                 {
                     "narrative_system_variable": "workspace",
                     "target_property": "workspace_name"
-                },
-                {
+                },{
                     "input_parameter": "genome_ids",
                     "target_property": "genome_ids",
-                },
-                {
+                },{
                     "input_parameter": "source",
                     "target_property": "source"
                 }
@@ -79,12 +75,10 @@
                 {
                     "service_method_output_path": [0,"report_name"],
                     "target_property": "report_name"
-                },
-                {
+                },{
                     "service_method_output_path": [0,"report_ref"],
                     "target_property": "report_ref"
-                },
-                {
+                },{
                     "narrative_system_variable": "workspace",
                     "target_property": "workspace_name"
                 }
