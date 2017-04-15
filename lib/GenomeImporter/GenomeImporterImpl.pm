@@ -456,7 +456,7 @@ sub save_assembly {
 	close($fo);
 	my $ga = new AssemblyUtil::AssemblyUtilClient(Bio::KBase::utilities::conf("GenomeImporter","call_back_url"));
 	my $assemblyref = $ga->save_assembly_from_fasta({
-		file => $filename,
+		file => {path => $filename},
         workspace_name => $args->{workspace},
         assembly_name => $args->{name}
 	});
