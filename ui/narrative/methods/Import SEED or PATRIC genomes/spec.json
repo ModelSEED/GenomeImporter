@@ -23,7 +23,7 @@
         },{
             "id": "source",
             "optional": false,
-            "advanced": true,
+            "advanced": false,
             "allow_multiple": false,
             "default_values": [ "none" ],
             "field_type": "dropdown",
@@ -62,7 +62,7 @@
             "input_mapping": [
                 {
                     "narrative_system_variable": "workspace",
-                    "target_property": "workspace_name"
+                    "target_property": "workspace"
                 },{
                     "input_parameter": "genome_ids",
                     "target_property": "genome_ids"

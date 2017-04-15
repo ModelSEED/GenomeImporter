@@ -564,6 +564,7 @@ sub import_external_genome
 	$args = Bio::KBase::utilities::args($args,["genome_ids","workspace","source"],{});
     my $genomes = [split(/[\n;\|]+/,$args->{genome_ids})];
     for (my $i=0; $i<@{$genomes};$i++) {
+    	print "Now importing ".$genomes->[$i]." from ".$args->{source}."\n";
     	if ($args->{source} eq "pubseed" || $args->{source} eq "coreseed") {
     		my $refs = $self->get_SEED_genome({
     			id => $genomes->[$i],
@@ -578,11 +579,11 @@ sub import_external_genome
     		});
     	}
     }
-    #my $reportout = Bio::KBase::kbaseenv::create_report({
-    #	workspace_name => $args->{workspace},
-    #	report_object_name => Bio::KBase::utilities::processid()
-    #});
-    #$output->{report_ref} = $reportout->{"ref"};
+    my $reportout = Bio::KBase::kbaseenv::create_report({
+    	workspace_name => $args->{workspace},
+    	report_object_name => Bio::KBase::utilities::processid()
+    });
+    $output->{report_ref} = $reportout->{"ref"};
 	$output->{report_name} = Bio::KBase::utilities::processid();
     #END import_external_genome
     my @_bad_returns;
