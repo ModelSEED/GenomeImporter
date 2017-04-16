@@ -579,22 +579,36 @@ sub import_external_genome
 	$self->util_initialize_call($params,$ctx);
 	$args = Bio::KBase::utilities::args($args,["genome_ids","workspace","source"],{});
     my $genomes = [split(/[\n;\|]+/,$args->{genome_ids})];
+    my $htmlmessage = "<p>";
     for (my $i=0; $i<@{$genomes};$i++) {
     	print "Now importing ".$genomes->[$i]." from ".$args->{source}."\n";
-    	if ($args->{source} eq "pubseed" || $args->{source} eq "coreseed") {
-    		my $refs = $self->get_SEED_genome({
-    			id => $genomes->[$i],
-    			source => $args->{source},
-    			workspace => $args->{workspace}
-    		});
-    	} elsif ($args->{source} eq "patric" || $args->{source} eq "patricrefseq") {
-    		my $refs = $self->get_PATRIC_genome({
-    			id => $genomes->[$i],
-    			source => $args->{source},
-    			workspace => $args->{workspace}
-    		});
-    	}
+    	eval {
+	    	if ($args->{source} eq "pubseed" || $args->{source} eq "coreseed") {
+	    		my $refs = $self->get_SEED_genome({
+	    			id => $genomes->[$i],
+	    			source => $args->{source},
+	    			workspace => $args->{workspace}
+	    		});
+	    	} elsif ($args->{source} eq "patric" || $args->{source} eq "patricrefseq") {
+	    		my $refs = $self->get_PATRIC_genome({
+	    			id => $genomes->[$i],
+	    			source => $args->{source},
+	    			workspace => $args->{workspace}
+	    		});
+	    	}
+    	};
+    	if ($@) {
+			$htmlmessage .= $genomes->[$i]." failed!<br>";
+			$failed->{$input} = $@;
+		} else {
+			$htmlmessage .= $genomes->[$i]." succeeded!<br>";
+			push(@{$success},$input);
+		}
     }
+    $htmlmessage .= "</p>";
+	Bio::KBase::utilities::print_report_message({
+		message => $htmlmessage,html=>1,append => 0
+	});
     my $reportout = Bio::KBase::kbaseenv::create_report({
     	workspace_name => $args->{workspace},
     	report_object_name => Bio::KBase::utilities::processid()
