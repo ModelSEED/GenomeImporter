@@ -599,10 +599,8 @@ sub import_external_genome
     	};
     	if ($@) {
 			$htmlmessage .= $genomes->[$i]." failed!<br>";
-			$failed->{$input} = $@;
 		} else {
 			$htmlmessage .= $genomes->[$i]." succeeded!<br>";
-			push(@{$success},$input);
 		}
     }
     $htmlmessage .= "</p>";
