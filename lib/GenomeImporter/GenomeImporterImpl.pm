@@ -4,8 +4,8 @@ use Bio::KBase::Exceptions;
 # Use Semantic Versioning (2.0.0-rc.1)
 # http://semver.org 
 our $VERSION = '0.0.1';
-our $GIT_URL = '';
-our $GIT_COMMIT_HASH = '';
+our $GIT_URL = 'ssh://git@github.com/ModelSEED/GenomeImporter';
+our $GIT_COMMIT_HASH = 'cab195c40b7956efc30797e462b7124c8fb9beef';
 
 =head1 NAME
 
