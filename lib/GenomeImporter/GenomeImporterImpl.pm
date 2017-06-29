@@ -5,7 +5,7 @@ use Bio::KBase::Exceptions;
 # http://semver.org 
 our $VERSION = '0.0.1';
 our $GIT_URL = 'ssh://git@github.com/ModelSEED/GenomeImporter';
-our $GIT_COMMIT_HASH = 'cab195c40b7956efc30797e462b7124c8fb9beef';
+our $GIT_COMMIT_HASH = '3d6d3dcb0e4d07a851b5e540154e0058e6094908';
 
 =head1 NAME
 
@@ -19,7 +19,6 @@ This sample module contains one small method - filter_contigs.
 =cut
 
 #BEGIN_HEADER
-use Bio::KBase::AuthToken;
 use AssemblyUtil::AssemblyUtilClient;
 use KBaseReport::KBaseReportClient;
 use Bio::ModelSEED::Client::SAP;
