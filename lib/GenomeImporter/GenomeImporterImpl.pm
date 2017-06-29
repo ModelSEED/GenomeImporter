@@ -22,7 +22,6 @@ This sample module contains one small method - filter_contigs.
 use AssemblyUtil::AssemblyUtilClient;
 use KBaseReport::KBaseReportClient;
 use Bio::ModelSEED::Client::SAP;
-use Bio::KBase::workspace::Client;
 use Bio::KBase::utilities;
 use Bio::KBase::ObjectAPI::utilities;
 use Bio::KBase::kbaseenv;
