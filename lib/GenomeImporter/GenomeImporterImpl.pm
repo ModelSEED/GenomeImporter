@@ -425,7 +425,6 @@ sub save_genome {
 	$args = Bio::KBase::utilities::args($args,["workspace","data"],{
 		name => $args->{data}->{id}
 	});
-	print "Saving genome!\n";
 	my $ga = Bio::KBase::kbaseenv::ga_client();
 	$args->{data}->{genetic_code} += 0;
 	$args->{data}->{dna_size} += 0;
@@ -458,7 +457,6 @@ sub save_assembly {
 		}
 	}
 	close($fo);
-	print "Saving assembly!\n";
 	my $ga = Bio::KBase::kbaseenv::ac_client();
 	my $assemblyref = $ga->save_assembly_from_fasta({
 		file => {path => $filename},
@@ -597,7 +595,7 @@ sub import_external_genome
 	    	}
     	};
     	if ($@) {
-			$htmlmessage .= $genomes->[$i]." failed!<br>";
+			$htmlmessage .= $genomes->[$i]." failed!<br>".$@;
 		} else {
 			$htmlmessage .= $genomes->[$i]." succeeded!<br>";
 		}
