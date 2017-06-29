@@ -426,7 +426,7 @@ sub save_genome {
 	$args = Bio::KBase::utilities::args($args,["workspace","data"],{
 		name => $args->{data}->{id}
 	});
-	my $ga = new GenomeAnnotationAPI::GenomeAnnotationAPIClient(Bio::KBase::utilities::conf("GenomeImporter","call_back_url"));
+	my $ga = Bio::KBase::kbaseenv::ga_client();
 	$args->{data}->{genetic_code} += 0;
 	$args->{data}->{dna_size} += 0;
 	my $gaout = $ga->save_one_genome_v1({
@@ -458,7 +458,7 @@ sub save_assembly {
 		}
 	}
 	close($fo);
-	my $ga = new AssemblyUtil::AssemblyUtilClient(Bio::KBase::utilities::conf("GenomeImporter","call_back_url"));
+	my $ga = Bio::KBase::kbaseenv::ac_client();
 	my $assemblyref = $ga->save_assembly_from_fasta({
 		file => {path => $filename},
         workspace_name => $args->{workspace},
