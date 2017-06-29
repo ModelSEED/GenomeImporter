@@ -19,7 +19,6 @@ This sample module contains one small method - filter_contigs.
 =cut
 
 #BEGIN_HEADER
-use AssemblyUtil::AssemblyUtilClient;
 use KBaseReport::KBaseReportClient;
 use Bio::ModelSEED::Client::SAP;
 use Bio::KBase::utilities;
@@ -426,6 +425,7 @@ sub save_genome {
 	$args = Bio::KBase::utilities::args($args,["workspace","data"],{
 		name => $args->{data}->{id}
 	});
+	print "Saving genome!\n";
 	my $ga = Bio::KBase::kbaseenv::ga_client();
 	$args->{data}->{genetic_code} += 0;
 	$args->{data}->{dna_size} += 0;
@@ -458,6 +458,7 @@ sub save_assembly {
 		}
 	}
 	close($fo);
+	print "Saving assembly!\n";
 	my $ga = Bio::KBase::kbaseenv::ac_client();
 	my $assemblyref = $ga->save_assembly_from_fasta({
 		file => {path => $filename},
