@@ -19,6 +19,7 @@ This sample module contains one small method - filter_contigs.
 =cut
 
 #BEGIN_HEADER
+use Digest::MD5;
 use KBaseReport::KBaseReportClient;
 use Bio::ModelSEED::Client::SAP;
 use Bio::KBase::utilities;
