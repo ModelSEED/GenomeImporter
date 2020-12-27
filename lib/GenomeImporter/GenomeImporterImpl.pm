@@ -467,7 +467,7 @@ sub save_genome {
 		}],
 		save => 0
 	};
-	my $anno_ontology_client = annotation_ontology_api::annotation_ontology_apiServiceClient::new();
+	my $anno_ontology_client = annotation_ontology_api::annotation_ontology_apiServiceClient::new(undef,{token => Bio::KBase::utilities::token()});
 	my $output = $anno_ontology_client->add_annotation_ontology_events($input);
 	$args->{data} = $output->{object};
 	my $ga = Bio::KBase::kbaseenv::ga_client();
