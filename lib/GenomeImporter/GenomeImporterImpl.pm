@@ -29,6 +29,11 @@ use GenomeAnnotationAPI::GenomeAnnotationAPIClient;
 use AssemblyUtil::AssemblyUtilClient;
 use Data::UUID;
 
+my $type_translation = {
+	peg => "gene",
+	rna => "gene"
+};
+
 sub get_PATRIC_genome {
 	my($self,$args) = @_;
 	$args = Bio::KBase::utilities::args($args,["id","source","workspace"],{});
@@ -52,7 +57,7 @@ sub get_PATRIC_genome {
 	});
     my $genomesource = "PATRIC";
     if ($refseq == 1) {
-    	$genomesource = "PATRICRefSeq";
+    		$genomesource = "PATRICRefSeq";
     }
 	my $genome = {
     	id => $genomeid,
@@ -169,6 +174,7 @@ sub get_PATRIC_genome {
 		}
 		if (defined($id)) {		
 			my $ftrobj = {id => $id,type => "CDS",aliases=>[]};		
+			print $id."\t".$data->{sequence_id}."\t".$data->{start}."\t".$data->{strand}."\t".$data->{na_length}."\n";
 			if (defined($data->{start})) {
 				$ftrobj->{location} = [[$data->{sequence_id},$data->{start},$data->{strand},$data->{na_length}]];
 				$ftrobj->{location}->[0]->[1] += 0;
@@ -298,7 +304,7 @@ sub get_SEED_genome {
 	if ($source eq "pubseed") {
 		$sapsvr = Bio::ModelSEED::Client::SAP->new();
 	} elsif ($source eq "coreseed") {
-		$sapsvr = Bio::ModelSEED::Client::SAP->new({url => "http://core.theseed.org/FIG/sap_server.cgi"});
+		$sapsvr = Bio::ModelSEED::Client::SAP->new({url => "https://core.theseed.org/FIG/sap_server.cgi"});
 	}
 	my $translation = {
 		pubseed => "PubSEED",
@@ -361,7 +367,7 @@ sub get_SEED_genome {
 	for (my $i=0; $i < @{$featureList}; $i++) {
 		my $feature = {
   			id => $featureList->[$i],
-			type => "peg",
+			type => "gene",
 			publications => [],
 			subsystems => [],
 			protein_families => [],
@@ -426,6 +432,44 @@ sub save_genome {
 	$args = Bio::KBase::utilities::args($args,["workspace","data"],{
 		name => $args->{data}->{id}
 	});
+	#Reformating IDs and gathering ontology terms
+	my $terms = {};
+	my $types = {};
+	my $oldfeatures = $args->{data}->{features};
+	$args->{data}->{features} = [];
+	foreach my $ftr (@{$args->{data}->{features}}) {
+		$types->{$ftr->{type}} = 1;
+		#Only retaining gene type features since these will all end up in the features array in KBase
+		if (defined($type_translation->{$ftr->{type}})) {
+			$ftr->{type} = $type_translation->{$ftr->{type}};
+			#Cleaning up the IDs to look a little better
+			if ($ftr->{id} =~ m/fig\|(\d+)\.(\d+)\.([a-zA-Z]+)\.(\d+)/) {
+				$ftr->{id} = $1.".".$2.".".$3."_".$4;
+			}
+			#Saving function as ontology term
+			$terms->{$ftr->{id}} = [{term => $ftr->{function}}];
+			push(@{$args->{data}->{features}},$ftr);
+		}
+	}
+	foreach my $type (keys(%{$types})) {
+		print $type."\n";
+	}
+	#Adding ontology terms
+	my $input = {
+		object => $args->{data},
+		events => [{
+			description => "RAST annotations imported from ".$args->{data}->{source},
+			ontology_id => "SSO",
+			method => "rast_genome_importer",
+			method_version => "1.0",
+			timestamp => Bio::KBase::utilities::timestamp(),
+			ontology_terms => $terms
+		}],
+		save => 0
+	};
+	my $anno_ontology_client = annotation_ontology_api::annotation_ontology_apiServiceClient::new();
+	my $output = $anno_ontology_client->add_annotation_ontology_events($input);
+	$args->{data} = $output->{object};
 	my $ga = Bio::KBase::kbaseenv::ga_client();
 	$args->{data}->{genetic_code} += 0;
 	$args->{data}->{dna_size} += 0;
