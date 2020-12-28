@@ -455,7 +455,7 @@ sub save_genome {
 			push(@{$args->{data}->{features}},$ftr);
 		}
 	}
-	print "Types:\n"
+	print "Types:\n";
 	foreach my $type (keys(%{$types})) {
 		print $type."\n";
 	}
