@@ -26,6 +26,7 @@ use Bio::KBase::utilities;
 use Bio::KBase::ObjectAPI::utilities;
 use Bio::KBase::kbaseenv;
 use GenomeAnnotationAPI::GenomeAnnotationAPIClient;
+use annotation_ontology_api::annotation_ontology_apiServiceClient;
 use AssemblyUtil::AssemblyUtilClient;
 use Data::UUID;
 
@@ -465,13 +466,14 @@ sub save_genome {
 			ontology_id => "SSO",
 			method => "rast_genome_importer",
 			method_version => "1.0",
-			timestamp => Bio::KBase::utilities::timestamp(),
+			timestamp => Bio::KBase::utilities::timestamp(1),
 			ontology_terms => $terms
 		}],
-		save => 0
+		save => 0,
+		type => "Genome"
 	};
 	print "Calling ontology service!";
-	my $anno_ontology_client = annotation_ontology_api::annotation_ontology_apiServiceClient::new(undef,{token => Bio::KBase::utilities::token()});
+	my $anno_ontology_client = annotation_ontology_api::annotation_ontology_apiServiceClient->new(undef,token => Bio::KBase::utilities::token());
 	my $output = $anno_ontology_client->add_annotation_ontology_events($input);
 	print "Ontology service done!";
 	$args->{data} = $output->{object};
@@ -629,7 +631,7 @@ sub import_external_genome
     my $htmlmessage = "<p>";
     for (my $i=0; $i<@{$genomes};$i++) {
     	print "Now importing ".$genomes->[$i]." from ".$args->{source}."\n";
-    	eval {
+    	#eval {
 	    	if ($args->{source} eq "pubseed" || $args->{source} eq "coreseed") {
 	    		my $refs = $self->get_SEED_genome({
 	    			id => $genomes->[$i],
@@ -643,7 +645,7 @@ sub import_external_genome
 	    			workspace => $args->{workspace}
 	    		});
 	    	}
-    	};
+    #};
     	if ($@) {
 			$htmlmessage .= $genomes->[$i]." failed!<br>".$@;
 		} else {
