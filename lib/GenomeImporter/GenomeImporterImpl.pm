@@ -441,7 +441,7 @@ sub save_genome {
 	my $oldfeatures = $args->{data}->{features};
 	$args->{data}->{features} = [];
 	print "Reprocessing features!\n";
-	foreach my $ftr (@{$args->{data}->{features}}) {
+	foreach my $ftr (@{$oldfeatures}) {
 		$types->{$ftr->{type}} = 1;
 		#Only retaining gene type features since these will all end up in the features array in KBase
 		if (defined($type_translation->{$ftr->{type}})) {
@@ -455,6 +455,7 @@ sub save_genome {
 			push(@{$args->{data}->{features}},$ftr);
 		}
 	}
+	print "Types:\n"
 	foreach my $type (keys(%{$types})) {
 		print $type."\n";
 	}
