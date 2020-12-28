@@ -415,11 +415,13 @@ sub get_SEED_genome {
 		}
   		push(@{$genomeObj->{features}},$feature);	
 	}
+	print "Saving assembly!\n";
 	$genomeObj->{assembly_ref} = $self->save_assembly({
 		workspace => $args->{workspace},
 		data => $contigHash,
 		name => $id.".contigs"
 	});
+	print "Saving genome!\n";
 	$self->save_genome({
 		workspace => $args->{workspace},
 		data => $genomeObj,
@@ -437,6 +439,7 @@ sub save_genome {
 	my $types = {};
 	my $oldfeatures = $args->{data}->{features};
 	$args->{data}->{features} = [];
+	print "Reprocessing features!\n";
 	foreach my $ftr (@{$args->{data}->{features}}) {
 		$types->{$ftr->{type}} = 1;
 		#Only retaining gene type features since these will all end up in the features array in KBase
@@ -467,8 +470,10 @@ sub save_genome {
 		}],
 		save => 0
 	};
+	print "Calling ontology service!";
 	my $anno_ontology_client = annotation_ontology_api::annotation_ontology_apiServiceClient::new(undef,{token => Bio::KBase::utilities::token()});
 	my $output = $anno_ontology_client->add_annotation_ontology_events($input);
+	print "Ontology service done!";
 	$args->{data} = $output->{object};
 	my $ga = Bio::KBase::kbaseenv::ga_client();
 	$args->{data}->{genetic_code} += 0;
