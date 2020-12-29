@@ -611,7 +611,6 @@ sub save_genome {
 		}
 		push(@{$input->{events}},$newevent);
 	}
-	Bio::KBase::ObjectAPI::utilities::PRINTFILE("/Users/chenry/ontology_api_input.json",[Bio::KBase::utilities::to_json($input,1)]);
 	#Saving the genome using the ontology service
 	print "Calling ontology service!";
 	my $anno_ontology_client = annotation_ontology_api::annotation_ontology_apiServiceClient->new(undef,token => Bio::KBase::utilities::token());
