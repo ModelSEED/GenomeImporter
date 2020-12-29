@@ -35,20 +35,10 @@
 						"id": "pubseed",
 						"ui-name": "PubSEED"
 					},{
-						"value": "coreseed",
-						"display": "CoreSEED (highly curated representative genomes)",
-						"id": "coreseed",
-						"ui-name": "CoreSEED"
-					},{
 						"value": "patric",
 						"display": "PATRIC (https://www.patricbrc.org/)",
 						"id": "patric",
 						"ui-name": "PATRIC"
-					},{
-						"value": "patricrefseq",
-						"display": "PATRIC RefSeq (https://www.patricbrc.org/)",
-						"id": "patricrefseq",
-						"ui-name": "patricrefseq"
 					}
 				]
 			}

@@ -29,54 +29,160 @@ use GenomeAnnotationAPI::GenomeAnnotationAPIClient;
 use annotation_ontology_api::annotation_ontology_apiServiceClient;
 use AssemblyUtil::AssemblyUtilClient;
 use Data::UUID;
+use P3DataAPI;
 
-my $type_translation = {
-	peg => "gene",
-	rna => "gene"
-};
+my $d = undef;
+
+sub query_for_sequences {
+	my($self,$md5s,$md5_hash,$type) = @_;
+	if (!defined($d)) {
+		$d = P3DataAPI->new();
+	}
+	my $batchsize = 100;
+    my $n = @{$md5s};
+    print $type." count:".$n."\n";
+    my $end = 99;
+    for (my $i = 0; $i < $n; $i = $end + 1) {
+        $end = ($i + $batchsize) > $n ? ($n - 1) : ($i + $batchsize - 1);
+        my $trycount = 0;
+       	my $query = "(";
+       	for (my $j=$i;$j < $end;$j++) {
+       		if (length($query) > 2) {
+       			$query .= ",";
+       		}
+       		$query .= $md5s->[$j];
+       	}
+       	$query .= ")";
+        my $seqres;
+        while (1) {
+        		eval {
+	        		$seqres = [$d->query('feature_sequence',
+	                        ['select', 'sequence,md5,sequence_type'],
+	                        ['in', 'md5', $query])]; 
+	        };
+	        if ($@ && $trycount < 3) {
+	        		sleep(5);
+				$trycount++;
+			} elsif ($@) {
+				$self->error("Too many failures trying to retrieve sequence data!");
+				print $@;
+			} else {
+				last;
+			}
+        } 
+		for my $seqent (@{$seqres}) {
+	    		if (defined($md5_hash->{$seqent->{md5}})) {
+	    			$md5_hash->{$seqent->{md5}}->{$type."_sequence"} = $seqent->{sequence};
+	    			$md5_hash->{$seqent->{md5}}->{$type."_length"} = length($seqent->{sequence});
+	    		} else {
+	    			print $i." ".$end." MD5 not found:".$seqent->{md5}."\n";
+	    		}
+	    	}
+    }
+}
+
+sub get_base_genome {
+	my($self,$args) = @_;
+	$args = Bio::KBase::utilities::args($args,["id","source","gc_content","assembly_ref","dna_size","md5","scientific_name","taxonomy"],{
+		genetic_code => 11,
+		contig_ids => [],
+		contig_lengths => [],
+		cdss => [],
+		features => [],
+		non_coding_features => [],
+		mrnas => [],
+		num_contigs => 0,
+		external_source_origination_date => Bio::KBase::utilities::timestamp(1),
+		notes => "Genome imported from ".$args->{source},
+		source_id => $args->{id},
+		domain => "Bacteria",
+		taxon_ref => "ReferenceTaxons/unknown_taxon",
+		feature_counts => {
+	        CDS => 0,
+	        gene => 0,
+	        ncRNA => 0,
+	        "non-protein_encoding_gene" => 0,
+	        protein_encoding_gene => 0,
+	        rRNA => 0,
+	        regulatory => 0,
+	        repeat_region => 0,
+	        tRNA => 0,
+	        tmRNA => 0
+    		}
+	});
+	return {
+    		id => $args->{id},
+    		molecule_type => "DNA",
+    		md5 => $args->{md5},
+    		gc_content => $args->{gc_content}+0,
+    		dna_size => $args->{dna_size}+0,
+    		genetic_code => $args->{genetic_code}+0,
+    		domain => "Bacteria",
+    		genome_tiers => [
+			"ExternalDB",
+			"User"
+		],
+		publications => [],
+		scientific_name => $args->{scientific_name},
+		source => $args->{source},
+		source_id => $args->{source_id},
+		assembly_ref => $args->{assembly_ref},
+		external_source_origination_date => $args->{external_source_origination_date},
+		notes => $args->{notes},
+    		taxon_ref => $args->{taxon_ref},
+    		taxonomy => $args->{taxonomy},
+    		num_contigs => $args->{num_contigs}+0,
+		contig_ids => $args->{contig_ids},
+		contig_lengths => $args->{contig_lengths},
+		features => $args->{features},
+		non_coding_features => $args->{non_coding_features},
+		cdss => $args->{cdss},
+		mrnas => $args->{mrnas},
+		feature_counts => $args->{feature_counts},
+    		warnings => []
+	};
+}
 
 sub get_PATRIC_genome {
 	my($self,$args) = @_;
 	$args = Bio::KBase::utilities::args($args,["id","source","workspace"],{});
-	my $genomeid = $args->{id};
-	my $source = $args->{source};
-	my $refseq = 0;
-	if ($source eq "patricrefseq") {
-		$refseq = 1;
-	}
-	my $data = Bio::KBase::ObjectAPI::utilities::rest_download({url => Bio::KBase::utilities::conf("GenomeImporter","data_api_url")."genome/?genome_id=".$genomeid."&http_accept=application/json",token => Bio::KBase::utilities::token()});
+	my $data = Bio::KBase::ObjectAPI::utilities::rest_download({url => Bio::KBase::utilities::conf("GenomeImporter","data_api_url")."genome/?genome_id=".$args->{id}."&http_accept=application/json",token => Bio::KBase::utilities::token()});
 	$data = $data->[0];
 	$data = Bio::KBase::utilities::args($data,[],{
-		genome_length => 0,
-		contigs => 0,
 		genome_name => "Unknown",
 		taxon_lineage_names => ["Unknown"],
-		owner => "Unknown",
-		gc_content => 0,
-		publication => "Unknown",
-		completion_date => "1970-01-01T00:00:00+0000"
+		completion_date => undef
 	});
-    my $genomesource = "PATRIC";
-    if ($refseq == 1) {
-    		$genomesource = "PATRICRefSeq";
-    }
-	my $genome = {
-    	id => $genomeid,
-		scientific_name => $data->{genome_name},
+	my $genome_input = {
+		id => $args->{id},
 		domain => $data->{taxon_lineage_names}->[0],
-		genetic_code => 11,
-		dna_size => $data->{genome_length},
-		num_contigs => 0,
-		contig_lengths => [],
-		contig_ids => [],
-		source => $genomesource,
-		source_id => $genomeid,
-		md5 => "none",
-		taxonomy => join(":",@{$data->{taxon_lineage_names}}),
+		source => "PATRIC",
+		source_id => $args->{id},
 		gc_content => $data->{gc_content},
-		complete => 1,
-		publications => [],
-		features => []
+		assembly_ref => undef,
+		dna_size => 0,
+		md5 => undef,
+		scientific_name => $data->{genome_name},
+		taxon_ref => undef,
+		taxonomy => join(":",@{$data->{taxon_lineage_names}}),
+		external_source_origination_date => $data->{completion_date},
+		contig_ids => [],
+		contig_lengths => [],
+		num_contigs => 0,
+		features => [],
+		non_coding_features => [],
+		feature_counts => {
+	        CDS => 0,
+	        gene => 0,
+	        ncRNA => 0,
+	        "non-protein_encoding_gene" => 0,
+	        protein_encoding_gene => 0,
+	        rRNA => 0,
+	        regulatory => 0,
+	        repeat_region => 0,
+	        tRNA => 0,
+	        tmRNA => 0
+    		}
 	};
 	#Retrieving feature information
 	my $start = 0;
@@ -86,7 +192,7 @@ sub get_PATRIC_genome {
 	my $allftrs = [];
 	while ($start >= 0 && $loopcount < 100) {
 		$loopcount++;#Insurance that no matter what, this loop won't run for more than 100 iterations
-		my $ftrdata = Bio::KBase::ObjectAPI::utilities::rest_download({url => Bio::KBase::utilities::conf("GenomeImporter","data_api_url")."genome_feature/?genome_id=".$genomeid."&http_accept=application/json&limit(10000,$start)",token => Bio::KBase::utilities::token()},$params);
+		my $ftrdata = Bio::KBase::ObjectAPI::utilities::rest_download({url => Bio::KBase::utilities::conf("GenomeImporter","data_api_url")."genome_feature/?genome_id=".$args->{id}."&http_accept=application/json&limit(10000,$start)",token => Bio::KBase::utilities::token()},$params);
 		if (defined($ftrdata) && @{$ftrdata} > 0) {
 			push(@{$allftrs},@{$ftrdata});
 		}
@@ -98,183 +204,57 @@ sub get_PATRIC_genome {
 			$start = -1;
 		}
 	}
-	my $patricids = {};
-	my $refseqids = {};
-	my $stops = {};
+	my $contig_feature_hash = {};
+	my $aamd5 = [];
+	my $namd5 = [];
+	my $aamd5_feature_hash = {};
+	my $namd5_feature_hash = {};
 	for (my $i=0; $i < @{$allftrs}; $i++) {
 		my $ftrdata = $allftrs->[$i];
-		if ($ftrdata->{feature_type} ne "pseudogene") {
-			if ($ftrdata->{strand} eq "-" && $ftrdata->{annotation} eq "RefSeq") {
-				$stops->{$ftrdata->{start}} = $ftrdata;
-			} elsif ($ftrdata->{annotation} eq "RefSeq") {
-				$stops->{$ftrdata->{end}} = $ftrdata;
+		if ($ftrdata->{annotation} eq "PATRIC" 
+			&& defined($ftrdata->{sequence_id}) 
+			&& defined($ftrdata->{patric_id})
+			&& defined($ftrdata->{feature_type})
+			&& defined($ftrdata->{start})
+			&& defined($ftrdata->{strand})
+			&& defined($ftrdata->{na_sequence_md5})
+			&& defined($ftrdata->{na_length})) {
+			push(@{$namd5},$ftrdata->{na_sequence_md5});
+			$namd5_feature_hash->{$ftrdata->{na_sequence_md5}} = $ftrdata;
+			if (defined($ftrdata->{aa_sequence_md5})) {
+				push(@{$aamd5},$ftrdata->{aa_sequence_md5});
+				$aamd5_feature_hash->{$ftrdata->{aa_sequence_md5}} = $ftrdata;
 			}
+			push(@{$contig_feature_hash->{$ftrdata->{sequence_id}}},$ftrdata);	
 		}
 	}
-	my $refseqgenes = 0;
-	my $patricgenes = 0;
-	my $match = 0;
-	my $weakermatch = 0;
-	my $unsortedftrlist = [];
-	for (my $i=0; $i < @{$allftrs}; $i++) {
-		my $ftrdata = $allftrs->[$i];
-		if ($ftrdata->{annotation} eq "PATRIC") {
-			push(@{$unsortedftrlist},$ftrdata);
-			$patricgenes++;
-			if ($ftrdata->{strand} eq "-" && defined($stops->{$ftrdata->{start}}) && $ftrdata->{strand} eq $stops->{$ftrdata->{start}}->{strand}){
-				$match++;
-				$ftrdata->{refseqgene} = $stops->{$ftrdata->{start}};
-				if (defined($stops->{$ftrdata->{start}}->{patricgene})) {
-					delete($stops->{$ftrdata->{start}}->{refseqgene});
-					$weakermatch--;
-				}
-				$stops->{$ftrdata->{start}}->{patricgene} = $ftrdata->{feature_id};
-			} elsif ($ftrdata->{strand} eq "+" && defined($stops->{$ftrdata->{end}}) && $ftrdata->{strand} eq $stops->{$ftrdata->{end}}->{strand}){
-				$match++;
-				$ftrdata->{refseqgene} = $stops->{$ftrdata->{end}};
-				if (defined($stops->{$ftrdata->{end}}->{patricgene})) {
-					delete($stops->{$ftrdata->{end}}->{refseqgene});
-					$weakermatch--;
-				}
-				$stops->{$ftrdata->{end}}->{patricgene} = $ftrdata->{feature_id};
-#			} elsif ($ftrdata->{strand} eq "+") {
-#				for (my $j=0; $j < 100; $j++) {
-#					my $startindex = ($ftrdata->{end} - 50 + $j);
-#					if (defined($stops->{$startindex}) && !defined($stops->{$startindex}->{patricgene}) && $ftrdata->{strand} eq $stops->{$startindex}->{strand} && abs($ftrdata->{start}-$stops->{$startindex}->{start}) < 50) {
-#						$weakermatch++;
-#						$ftrdata->{refseqgene} = $stops->{$startindex};
-#						$stops->{$startindex}->{patricgene} = $ftrdata->{feature_id};
-#						last;
-#					}
-#				}
-#			} elsif ($ftrdata->{strand} eq "-") {
-#				for (my $j=0; $j < 100; $j++) {
-#					my $startindex = ($ftrdata->{start} - 50 + $j);
-#					if (defined($stops->{$startindex}) && !defined($stops->{$startindex}->{patricgene}) && $ftrdata->{strand} eq $stops->{$startindex}->{strand} && abs($ftrdata->{end}-$stops->{$startindex}->{end}) < 50) {
-#						$weakermatch++;
-#						$ftrdata->{refseqgene} = $stops->{$startindex};
-#						$stops->{$startindex}->{patricgene} = $ftrdata->{feature_id};
-#						last;
-#					}
-#				}
-			}
-		} else {
-			$refseqgenes++;
-			$refseqids->{$ftrdata->{feature_id}} = $ftrdata;
-		}
+	print "Feature contig count:".keys(%{$contig_feature_hash})."\n";
+	#Pulling dna and protein sequences
+	$self->query_for_sequences($namd5,$namd5_feature_hash,"na");
+	$self->query_for_sequences($aamd5,$aamd5_feature_hash,"aa");
+	#Pulling contig information
+	if (!defined($d)) {
+		$d = P3DataAPI->new();
 	}
-	my $sortedftrlist = [sort { $b->{start} cmp $a->{start} } @{$unsortedftrlist}];
-	my $funchash = Bio::KBase::ObjectAPI::utilities::get_SSO();
-	for (my $i=0; $i < @{$sortedftrlist}; $i++) {
-		my $id;
-		my $data = $sortedftrlist->[$i];
-		if ($refseq == 1 && defined($data->{refseqgene}->{refseq_locus_tag})) {
-			$id = $data->{refseqgene}->{refseq_locus_tag}; 
-		} else {
-			$id = $data->{patric_id};
-		}
-		if (defined($id)) {		
-			my $ftrobj = {id => $id,type => "CDS",aliases=>[]};		
-			print $id."\t".$data->{sequence_id}."\t".$data->{start}."\t".$data->{strand}."\t".$data->{na_length}."\n";
-			if (defined($data->{start})) {
-				$ftrobj->{location} = [[$data->{sequence_id},$data->{start},$data->{strand},$data->{na_length}]];
-				$ftrobj->{location}->[0]->[1] += 0;
-			}
-			if (defined($data->{feature_type})) {
-				$ftrobj->{type} = $data->{feature_type};
-			}
-			if (defined($data->{product})) {
-				$ftrobj->{function} = $data->{product};
-			}
-			if (defined($data->{na_sequence})) {
-				$ftrobj->{dna_sequence} = $data->{na_sequence};
-				$ftrobj->{dna_sequence_length} = $data->{na_length};
-			}
-			if (defined($data->{aa_sequence})) {
-				$ftrobj->{protein_translation} = $data->{aa_sequence};
-				$ftrobj->{protein_translation_length} = $data->{aa_length};
-				$ftrobj->{md5} = $data->{aa_sequence_md5};
-			}
-			if (defined($data->{refseqgene}->{refseq_locus_tag})) {
-				$ftrobj->{ontology_terms}->{RefSeq}->{$data->{refseqgene}->{refseq_locus_tag}} = {
-					id => $data->{refseqgene}->{refseq_locus_tag},
-					term_name => $data->{refseqgene}->{product}
-				};
-				if (defined($data->{refseqgene}->{gene})) {
-					$ftrobj->{ontology_terms}->{GeneName}->{$data->{refseqgene}->{gene}} = {
-						id => $data->{refseqgene}->{gene}
-					};
-				}
-			}
-			if (defined($data->{patric_id})) {
-				$ftrobj->{ontology_terms}->{PATRIC}->{$data->{patric_id}} = {
-					id => $data->{patric_id}
-				};
-			}
-			if (defined($data->{figfam_id})) {
-				$ftrobj->{ontology_terms}->{FigFam}->{$data->{figfam_id}} = {
-					id => $data->{figfam_id}
-				};
-			}
-			if (defined($data->{pgfam_id})) {
-				$ftrobj->{ontology_terms}->{PGFam}->{$data->{pgfam_id}} = {
-					id => $data->{pgfam_id}
-				};
-			}
-			if (defined($data->{plfam_id})) {
-				$ftrobj->{ontology_terms}->{PLFam}->{$data->{plfam_id}} = {
-					id => $data->{plfam_id}
-				};
-			}
-			if (defined($data->{accession})) {
-				$ftrobj->{ontology_terms}->{Accession}->{$data->{accession}} = {
-					id => $data->{accession}
-				};
-			}
-			if (defined($data->{product})) {
-				my $function = $data->{product};
-	  			my $array = [split(/\#/,$function)];
-	  			$function = shift(@{$array});
-				$function =~ s/\s+$//;
-				$array = [split(/\s*;\s+|\s+[\@\/]\s+/,$function)];
-				for (my $k=0; $k < @{$array}; $k++) {
-					my $rolename = lc($array->[$k]);
-					$rolename =~ s/[\d\-]+\.[\d\-]+\.[\d\-]+\.[\d\-]+//g;
-					$rolename =~ s/\s//g;
-					$rolename =~ s/\#.*$//g;
-					if (defined($funchash->{$rolename})) {
-						$ftrobj->{ontology_terms}->{SSO}->{$funchash->{$rolename}->{id}} = {
-							id => $funchash->{$rolename}->{id},
-							term_name => $funchash->{$rolename}->{name}
-						};
-					}
-				}
-			}
-			if (defined($data->{go})) {
-				for (my $k=0; $k < @{$data->{go}}; $k++) {
-					my $array = [split(/\|/,$data->{go}->[$k])];
-					$ftrobj->{ontology_terms}->{GO}->{$array->[0]} = {
-						id => $array->[0],
-						term_name => $array->[1]
-					};
-				}
-			}
-			if (defined($ftrobj->{ontology_terms})) {
-				delete $ftrobj->{ontology_terms};
-			}
-			push(@{$genome->{features}},$ftrobj);
-		}
+	my @res = $d->query("genome_sequence",
+		["select", "genome_id", "accession", "sequence"],
+		["eq", "genome_id", $args->{id}],
+	);
+	my $contigHash = {};
+	for my $ent (@res) {
+	    $contigHash->{$ent->{accession}} = $ent->{sequence};
 	}
-    $data = Bio::KBase::ObjectAPI::utilities::rest_download({url => Bio::KBase::utilities::conf("GenomeImporter","data_api_url")."genome_sequence/?genome_id=".$genomeid."&http_accept=application/json",token => Bio::KBase::utilities::token()});
-	my $contigHash;
 	my $contigarray;
-	for (my $i=0; $i < @{$data}; $i++) {
-		$contigHash->{$data->[$i]->{sequence_id}} = $data->[$i]->{sequence};
-		push(@{$contigarray},$data->[$i]->{sequence});
-		$genome->{num_contigs}++;
-		push(@{$genome->{contig_lengths}},length($data->[$i]->{sequence}));
-		push(@{$genome->{contig_ids}},$data->[$i]->{sequence_id});
+	my $contigids = [];
+	foreach my $contigid (keys(%{$contigHash})) {
+		$genome_input->{num_contigs}++;
+		push(@{$contigids},$contigid);
+		push(@{$genome_input->{contig_lengths}},length($contigHash->{$contigid}));
+		$genome_input->{dna_size} += length($contigHash->{$contigid});
+		push(@{$contigarray},$contigHash->{$contigid});
 	}
+	$genome_input->{contig_ids} = [sort { $a cmp $b } @{$contigids}];
+	print "Genome contig count:".$genome_input->{num_contigs}."\n";
 	my $sortedcontigs = [sort { $a cmp $b } @{$contigarray}];
 	my $str = "";
 	for (my $i=0; $i < @{$sortedcontigs}; $i++) {
@@ -283,28 +263,119 @@ sub get_PATRIC_genome {
 		}
 		$str .= $sortedcontigs->[$i];	
 	}
-	$genome->{md5} = Digest::MD5::md5_hex($str);
-	$genome->{assembly_ref} = $self->save_assembly({
+	$genome_input->{md5} = Digest::MD5::md5_hex($str);
+	#Saving contigs
+	$genome_input->{assembly_ref} = $args->{workspace}."/".$args->{id}.".contigs";
+	$genome_input->{assembly_ref} = $self->save_assembly({
 		workspace => $args->{workspace},
 		data => $contigHash,
-		name => $genomeid.".contigs"
+		name => $args->{id}.".contigs"
 	});
+	#Creating features array
+	my $index = 1;
+	my $added_contigs = {};
+	foreach my $contig (@{$genome_input->{contig_ids}}) {
+		if (defined($contig_feature_hash->{$contig})) {
+			$added_contigs->{$contig} = 1;
+			my $sortedftrlist = [sort { $a->{start} <=> $b->{start} } @{$contig_feature_hash->{$contig}}];
+			for (my $i=0; $i < @{$sortedftrlist}; $i++) {
+				if (defined($sortedftrlist->[$i]->{na_sequence})) {
+					my $data = $sortedftrlist->[$i];
+					my $ftrobj = {
+						id => $genome_input->{id}."_".$index,
+						type => $data->{feature_type},
+						aliases=>[[$genome_input->{source}."_id",$data->{patric_id}]],
+						location => [[$data->{sequence_id},$data->{start},$data->{strand},$data->{na_length}]],
+					};
+					$ftrobj->{location}->[0]->[1] += 0;
+					if (defined($data->{product})) {
+						$ftrobj->{functions} = [split(/\s*;\s+|\s+[\@\/]\s+/,$data->{product})];
+						for (my $k=0; $k < @{$ftrobj->{functions}}; $k++) {
+							$genome_input->{ontologies}->{SSO}->{$ftrobj->{id}}->{$ftrobj->{functions}->[$k]} = 1;
+						}
+					} else {
+						$ftrobj->{functions} = ["Unknown"];
+					}
+					if (defined($data->{na_sequence})) {
+						$ftrobj->{dna_sequence} = $data->{na_sequence};
+						$ftrobj->{dna_sequence_length} = $data->{na_length};
+						$ftrobj->{md5} = Digest::MD5::md5_hex($data->{na_sequence});
+					}
+					if (defined($data->{aa_sequence})) {
+						$ftrobj->{type} = "gene";
+						$ftrobj->{protein_translation} = $data->{aa_sequence};
+						$ftrobj->{protein_translation_length} = $data->{aa_length};
+						$ftrobj->{protein_md5} = $data->{aa_sequence_md5};
+					}
+					if (defined($data->{refseqgene}->{refseq_locus_tag})) {
+						push(@{$ftrobj->{aliases}},["RefSeq",$data->{refseqgene}->{refseq_locus_tag}]);
+					}
+					if (defined($data->{refseqgene}->{gene})) {
+						push(@{$ftrobj->{aliases}},["RefSeq",$data->{refseqgene}->{gene}]);
+					}
+					if (defined($data->{refseqgene}->{product})) {
+						$genome_input->{ontologies}->{RefSeq}->{$ftrobj->{id}}->{$data->{refseqgene}->{product}} = 1;
+					}
+					if (defined($data->{figfam_id})) {
+						$genome_input->{ontologies}->{FIGFAM}->{$ftrobj->{id}}->{$data->{figfam_id}} = 1;
+					}
+					if (defined($data->{pgfam_id})) {
+						$genome_input->{ontologies}->{PGFAM}->{$ftrobj->{id}}->{$data->{pgfam_id}} = 1;
+					}
+					if (defined($data->{plfam_id})) {
+						$genome_input->{ontologies}->{PLFAM}->{$ftrobj->{id}}->{$data->{plfam_id}} = 1;
+					}
+					if (defined($data->{go})) {
+						for (my $k=0; $k < @{$data->{go}}; $k++) {
+							my $array = [split(/\|/,$data->{go}->[$k])];
+							$genome_input->{ontologies}->{GO}->{$ftrobj->{id}}->{$array->[0]} = 1;
+						}
+					}
+					$index++;
+					if ($ftrobj->{type} eq "gene") {
+						push(@{$genome_input->{features}},$ftrobj);
+						$genome_input->{feature_counts}->{CDS} += 1;
+						$genome_input->{feature_counts}->{gene} += 1;
+					} else {
+						push(@{$genome_input->{non_coding_features}},$ftrobj);
+						if ($ftrobj->{type} eq "tRNA") {
+							$genome_input->{feature_counts}->{tRNA} += 1;
+						} elsif ($ftrobj->{type} eq "rRNA") {
+							$genome_input->{feature_counts}->{rRNA} += 1;
+						} elsif ($ftrobj->{type} eq "rRNA") {
+							$genome_input->{feature_counts}->{"non-protein_encoding_gene"} += 1;
+						}
+					}
+				} else {
+					print $sortedftrlist->[$i]->{patric_id}." no DNA sequence!\n";
+				}
+			}
+		} else {
+			print $contig." has no features!\n";
+		}
+	}
+	foreach my $contig (keys(%{$contig_feature_hash})) {
+		if (!defined($added_contigs->{$contig})) {
+			my $ftrcount = @{$contig_feature_hash->{$contig}};
+			print $contig." ".$ftrcount." features never added!\n";
+		}
+	}
+	#Saving genome
 	$self->save_genome({
 		workspace => $args->{workspace},
-		data => $genome,
-		name => $genomeid
+		data => $genome_input,
+		name => $genome_input->{id}
 	});
 }
 
 sub get_SEED_genome {
 	my($self,$args) = @_;
 	$args = Bio::KBase::utilities::args($args,["id","source","workspace"],{});
-	my $id = $args->{id};
-	my $source = $args->{source};
+	#Configuring the server based on the requested source
 	my $sapsvr;
-	if ($source eq "pubseed") {
+	if ($args->{source} eq "pubseed") {
 		$sapsvr = Bio::ModelSEED::Client::SAP->new();
-	} elsif ($source eq "coreseed") {
+	} elsif ($args->{source} eq "coreseed") {
 		$sapsvr = Bio::ModelSEED::Client::SAP->new({url => "https://core.theseed.org/FIG/sap_server.cgi"});
 	}
 	my $translation = {
@@ -312,50 +383,65 @@ sub get_SEED_genome {
 		coreseed => "CoreSEED"
 	};
 	my $data = $sapsvr->genome_data({
-		-ids => [$id],
+		-ids => [$args->{id}],
 		-data => [qw(gc-content dna-size name taxonomy domain genetic-code)]
 	});
-	if (!defined($data->{$id})) {
-    	$self->error("PubSEED genome ".$id." not found!");
+	if (!defined($data->{$args->{id}})) {
+    		$self->error("PubSEED genome ".$args->{id}." not found!");
     }
-    my $genomeObj = {
-		id => $id,
-		scientific_name => $data->{$id}->[2],
-		domain => $data->{$id}->[4],
-		genetic_code => $data->{$id}->[5],
-		dna_size => $data->{$id}->[1],
+    #Initializing the genome input
+    my $genome_input = {
+		id => $args->{id},
+		domain => $data->{$args->{id}}->[4],
+		source => $translation->{$args->{source}},
+		source_id => $args->{id},
+		gc_content => $data->{$args->{id}}->[0]/100,
+		assembly_ref => undef,
+		dna_size => $data->{$args->{id}}->[1]+0,
+		md5 => undef,
+		scientific_name => $data->{$args->{id}}->[2],
+		genetic_code => $data->{$args->{id}}->[5]+0,
+		taxon_ref => undef,
+		taxonomy => $data->{$args->{id}}->[3],
+		external_source_origination_date => $data->{completion_date},
 		num_contigs => 0,
 		contig_lengths => [],
 		contig_ids => [],
-		source => $translation->{$source},
-		source_id => $id,
-		taxonomy => $data->{$id}->[3],
-		gc_content => $data->{$id}->[0]/100,
-		complete => 1,
-		publications => [],
 		features => [],
-    };
-	my $featureHash = $sapsvr->all_features({-ids => $id});
-	my $genomeHash = $sapsvr->genome_contigs({
-		-ids => [$id]
+		non_coding_features => [],
+		feature_counts => {
+	        CDS => 0,
+	        gene => 0,
+	        ncRNA => 0,
+	        "non-protein_encoding_gene" => 0,
+	        protein_encoding_gene => 0,
+	        rRNA => 0,
+	        regulatory => 0,
+	        repeat_region => 0,
+	        tRNA => 0,
+	        tmRNA => 0
+    		}
+	};
+    #Processing the assembly
+    my $genomeHash = $sapsvr->genome_contigs({
+		-ids => [$args->{id}]
 	});
-	my $featureList = $featureHash->{$id};
-	my $contigList = $genomeHash->{$id};
-	my $functions = $sapsvr->ids_to_functions({-ids => $featureList});
-	my $dnaseq = $sapsvr->ids_to_sequences({-ids => $featureList});
-	
-	my $locations = $sapsvr->fid_locations({-ids => $featureList});
-	my $sequences = $sapsvr->fids_to_proteins({-ids => $featureList,-sequence => 1});
-	my $contigHash = $sapsvr->contig_sequences({
+    my $contigList = $genomeHash->{$args->{id}};
+    my $contigHash = $sapsvr->contig_sequences({
 		-ids => $contigList
 	});
-	my $contigarray;
+    my $contigarray;
+    my $newhash = {};
+    my $contigids = [];
 	foreach my $contigid (keys(%{$contigHash})) {
+		my $array = [split(/:/,$contigid)];
+		$newhash->{$array->[1]} = $contigHash->{$contigid};
 		push(@{$contigarray},$contigHash->{$contigid});
-		$genomeObj->{num_contigs}++;
-		push(@{$genomeObj->{contig_lengths}},length($contigHash->{$contigid}));
-		push(@{$genomeObj->{contig_ids}},$contigid);
+		$genome_input->{num_contigs}++;
+		push(@{$genome_input->{contig_lengths}},length($contigHash->{$contigid}));
+		push(@{$contigids},$array->[1]);
 	}
+	$genome_input->{contig_ids} = [sort { $a cmp $b } @{$contigids}];
 	my $sortedcontigs = [sort { $a cmp $b } @{$contigarray}];
 	my $str = "";
 	for (my $i=0; $i < @{$sortedcontigs}; $i++) {
@@ -364,36 +450,43 @@ sub get_SEED_genome {
 		}
 		$str .= $sortedcontigs->[$i];	
 	}
-	$genomeObj->{md5} = Digest::MD5::md5_hex($str);
+	$genome_input->{md5} = Digest::MD5::md5_hex($str);
+    	#Saving contigs
+    	$genome_input->{assembly_ref} = $args->{workspace}."/".$args->{id}.".contigs";
+	$genome_input->{assembly_ref} = $self->save_assembly({
+		workspace => $args->{workspace},
+		data => $newhash,
+		name => $args->{id}.".contigs"
+	});
+	#Pulling feature data
+	my $featureHash = $sapsvr->all_features({-ids => $args->{id}});
+	my $featureList = $featureHash->{$args->{id}};
+	my $functions = $sapsvr->ids_to_functions({-ids => $featureList});
+	my $dnaseq = $sapsvr->ids_to_sequences({-ids => $featureList});
+	my $locations = $sapsvr->fid_locations({-ids => $featureList});
+	my $sequences = $sapsvr->fids_to_proteins({-ids => $featureList,-sequence => 1});
+	my $contig_feature_hash = {};
 	for (my $i=0; $i < @{$featureList}; $i++) {
 		my $feature = {
-  			id => $featureList->[$i],
-			type => "gene",
-			publications => [],
-			subsystems => [],
-			protein_families => [],
-			aliases => [],
-			annotations => [],
-			subsystem_data => [],
-			regulon_data => [],
-			atomic_regulons => [],
-			coexpressed_fids => [],
-			co_occurring_fids => []
+			type => "unknown",
+			aliases => [[$translation->{$args->{source}}."_id",$featureList->[$i]]],
   		};
   		if ($featureList->[$i] =~ m/\.([^\.]+)\.\d+$/) {
   			$feature->{type} = $1;
   		}
-		if (defined($functions->{$featureList->[$i]})) {
-			$feature->{function} = $functions->{$featureList->[$i]};
+  		if (defined($functions->{$featureList->[$i]})) {
+  			$feature->{functions} = [split(/\s*;\s+|\s+[\@\/]\s+/,$functions->{$featureList->[$i]})];
 		}
 		if (defined($sequences->{$featureList->[$i]})) {
+			$feature->{type} = "gene";
 			$feature->{protein_translation} = $sequences->{$featureList->[$i]};
 			$feature->{protein_translation_length} = length($feature->{protein_translation});
   			$feature->{dna_sequence_length} = 3*$feature->{protein_translation_length};
-  			$feature->{md5} = Digest::MD5::md5_hex($feature->{protein_translation});
+  			$feature->{protein_md5} = Digest::MD5::md5_hex($feature->{protein_translation});
 		}
 		if (defined($dnaseq->{$featureList->[$i]})) {
 			$feature->{dna_sequence} = $dnaseq->{$featureList->[$i]};
+			$feature->{md5} = Digest::MD5::md5_hex($feature->{dna_sequence});
 			$feature->{dna_sequence_length} = length($dnaseq->{$featureList->[$i]});
 		}
   		if (defined($locations->{$featureList->[$i]}->[0])) {
@@ -412,21 +505,56 @@ sub get_SEED_genome {
 					$feature->{location}->[$j]->[3] = $feature->{location}->[$j]->[3]+0;
 				}
 			}
-			
 		}
-  		push(@{$genomeObj->{features}},$feature);	
+		#print $feature->{type}."\n";
+		#print $feature->{dna_sequence}."\n";
+		if (defined($feature->{location})
+			&& defined($feature->{dna_sequence})
+			&& defined($feature->{type})
+			&& $feature->{type} ne "opr"
+			&& $feature->{type} ne "pbs"
+			&& $feature->{type} ne "prm"
+			&& $feature->{type} ne "trm") {
+  			push(@{$contig_feature_hash->{$feature->{location}->[0]->[0]}},$feature);
+		}
 	}
-	print "Saving assembly!\n";
-	$genomeObj->{assembly_ref} = $self->save_assembly({
-		workspace => $args->{workspace},
-		data => $contigHash,
-		name => $id.".contigs"
-	});
-	print "Saving genome!\n";
+	#Creating features array
+	my $index = 1;
+	foreach my $contig (@{$genome_input->{contig_ids}}) {
+		print "Contig:".$contig."\n";
+		if (defined($contig_feature_hash->{$contig})) {
+			my $sortedftrlist = [sort { $a->{location}->[0]->[1] <=> $b->{location}->[0]->[1] } @{$contig_feature_hash->{$contig}} ];
+			for (my $i=0; $i < @{$sortedftrlist}; $i++) {
+				my $ftrobj = $sortedftrlist->[$i];
+				$ftrobj->{id} = $genome_input->{id}."_".$index;
+				if (defined($ftrobj->{functions})) {
+		  			for (my $k=0; $k < @{$ftrobj->{functions}}; $k++) {
+						$genome_input->{ontologies}->{SSO}->{$ftrobj->{id}}->{$ftrobj->{functions}->[$k]} = 1;
+					}
+				} else {
+					$ftrobj->{functions} = ["Unknown"];
+				}
+				$index++;
+				if ($ftrobj->{type} eq "gene") {
+					push(@{$genome_input->{features}},$ftrobj);
+					$genome_input->{feature_counts}->{CDS} += 1;
+					$genome_input->{feature_counts}->{gene} += 1;
+				} else {
+					push(@{$genome_input->{non_coding_features}},$ftrobj);
+					if ($ftrobj->{type} eq "rna") {
+						$genome_input->{feature_counts}->{rRNA} += 1;
+					} else {
+						$genome_input->{feature_counts}->{"non-protein_encoding_gene"} += 1;
+					}
+				}
+			}
+		}
+	}
+	#Saving genome
 	$self->save_genome({
 		workspace => $args->{workspace},
-		data => $genomeObj,
-		name => $id
+		data => $genome_input,
+		name => $genome_input->{id}
 	});
 }
 
@@ -435,64 +563,64 @@ sub save_genome {
 	$args = Bio::KBase::utilities::args($args,["workspace","data"],{
 		name => $args->{data}->{id}
 	});
-	#Reformating IDs and gathering ontology terms
-	my $terms = {};
-	my $types = {};
-	my $oldfeatures = $args->{data}->{features};
-	$args->{data}->{features} = [];
-	print "Reprocessing features!\n";
-	foreach my $ftr (@{$oldfeatures}) {
-		$types->{$ftr->{type}} = 1;
-		#Only retaining gene type features since these will all end up in the features array in KBase
-		if (defined($type_translation->{$ftr->{type}})) {
-			$ftr->{type} = $type_translation->{$ftr->{type}};
-			#Cleaning up the IDs to look a little better
-			if ($ftr->{id} =~ m/fig\|(\d+)\.(\d+)\.([a-zA-Z]+)\.(\d+)/) {
-				$ftr->{id} = $1.".".$2.".".$3."_".$4;
-			}
-			#Saving function as ontology term
-			$terms->{$ftr->{id}} = [{term => $ftr->{function}}];
-			push(@{$args->{data}->{features}},$ftr);
+	#Checking if the id is a relevant tax id
+	my $taxid = $args->{data}->{id};
+	$taxid =~ s/\.\d+//;
+	eval {
+		Bio::KBase::kbaseenv::get_object_info([{"ref" => "ReferenceTaxons/".$taxid."_taxon"}],0);
+	};
+	if (!$@) {
+		$args->{data}->{taxon_ref} = 	"ReferenceTaxons/".$taxid."_taxon";
+	}
+	#Building genome
+	my $genome = $self->get_base_genome($args->{data});
+	#Automatically creating CDS for all coding genes
+	foreach my $ftr (@{$genome->{features}}) {
+		my $cdsftr = {};
+		foreach my $field (keys(%{$ftr})) {
+			$cdsftr->{$field} = $ftr->{$field};
 		}
+		$cdsftr->{id} = $ftr->{id}."_CDS_1";
+		$cdsftr->{type} = "CDS";
+		$cdsftr->{parent_gene} = $ftr->{id};
+		$ftr->{cdss} = [$cdsftr->{id}];
+		push(@{$genome->{cdss}},$cdsftr);
 	}
-	print "Types:\n";
-	foreach my $type (keys(%{$types})) {
-		print $type."\n";
-	}
-	#Adding ontology terms
+	#Building ontology events
 	my $input = {
-		object => $args->{data},
-		events => [{
-			description => "RAST annotations imported from ".$args->{data}->{source},
-			ontology_id => "SSO",
-			method => "rast_genome_importer",
+		object => $genome,
+		events => [],
+		save => 1,
+		output_name => $args->{data}->{id},
+		output_workspace => $args->{workspace},
+		type => "KBaseGenomes.Genome"
+	};
+	foreach my $ontology (keys(%{$args->{data}->{ontologies}})) {
+		my $newevent = {
+			description => $ontology." annotations imported from ".$args->{data}->{source},
+			ontology_id => $ontology,
+			method => "GenomeImporter-import_external_genome",
 			method_version => "1.0",
 			timestamp => Bio::KBase::utilities::timestamp(1),
-			ontology_terms => $terms
-		}],
-		save => 0,
-		type => "Genome"
-	};
+			ontology_terms => {}
+		};
+		foreach my $gene (keys(%{$args->{data}->{ontologies}->{$ontology}})) {
+			foreach my $term (keys(%{$args->{data}->{ontologies}->{$ontology}->{$gene}})) {
+				push(@{$newevent->{ontology_terms}->{$gene}},{term => $term});
+			} 
+		}
+		push(@{$input->{events}},$newevent);
+	}
+	Bio::KBase::ObjectAPI::utilities::PRINTFILE("/Users/chenry/ontology_api_input.json",[Bio::KBase::utilities::to_json($input,1)]);
+	#Saving the genome using the ontology service
 	print "Calling ontology service!";
 	my $anno_ontology_client = annotation_ontology_api::annotation_ontology_apiServiceClient->new(undef,token => Bio::KBase::utilities::token());
 	my $output = $anno_ontology_client->add_annotation_ontology_events($input);
-	print "Ontology service done!";
-	$args->{data} = $output->{object};
-	my $ga = Bio::KBase::kbaseenv::ga_client();
-	$args->{data}->{genetic_code} += 0;
-	$args->{data}->{dna_size} += 0;
-	my $gaout = $ga->save_one_genome_v1({
-		workspace => $args->{workspace},
-        name => $args->{name},
-        data => $args->{data},
-        provenance => [],
-        hidden => 0
-	});
 	Bio::KBase::kbaseenv::add_object_created({
-		"ref" => $gaout->{info}->[6]."/".$gaout->{info}->[0]."/".$gaout->{info}->[4],
+		"ref" => $output->{output_ref},
 		"description" => "Genome object for ".$args->{name}
 	});
-	return $gaout->{info}->[6]."/".$gaout->{info}->[0]."/".$gaout->{info}->[4];
+	return $output->{output_ref};
 }
 
 sub save_assembly {
@@ -632,7 +760,7 @@ sub import_external_genome
     my $htmlmessage = "<p>";
     for (my $i=0; $i<@{$genomes};$i++) {
     	print "Now importing ".$genomes->[$i]." from ".$args->{source}."\n";
-    	#eval {
+    	eval {
 	    	if ($args->{source} eq "pubseed" || $args->{source} eq "coreseed") {
 	    		my $refs = $self->get_SEED_genome({
 	    			id => $genomes->[$i],
@@ -646,7 +774,7 @@ sub import_external_genome
 	    			workspace => $args->{workspace}
 	    		});
 	    	}
-    #};
+    };
     	if ($@) {
 			$htmlmessage .= $genomes->[$i]." failed!<br>".$@;
 		} else {
@@ -658,9 +786,9 @@ sub import_external_genome
 		message => $htmlmessage,html=>1,append => 0
 	});
     my $reportout = Bio::KBase::kbaseenv::create_report({
-    	workspace_name => $args->{workspace},
-    	report_object_name => Bio::KBase::utilities::processid()
-    });
+    		workspace_name => $args->{workspace},
+    		report_object_name => Bio::KBase::utilities::processid()
+    	});
     $output->{report_ref} = $reportout->{"ref"};
 	$output->{report_name} = Bio::KBase::utilities::processid();
     #END import_external_genome
