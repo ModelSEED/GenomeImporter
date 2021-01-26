@@ -768,6 +768,7 @@ sub import_external_genome
     my $htmlmessage = "<p>";
     for (my $i=0; $i<@{$genomes};$i++) {
     	print "Now importing ".$genomes->[$i]." from ".$params->{source}."\n";
+    print "Token:".$token."\n";
     eval {
 	    	if ($params->{source} eq "pubseed" || $params->{source} eq "coreseed") {
 	    		my $refs = $self->get_SEED_genome({
