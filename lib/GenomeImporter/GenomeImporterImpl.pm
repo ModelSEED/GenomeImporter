@@ -145,8 +145,13 @@ sub get_base_genome {
 
 sub get_PATRIC_genome {
 	my($self,$args) = @_;
-	$args = Bio::KBase::utilities::args($args,["id","source","workspace"],{});
-	my $data = Bio::KBase::ObjectAPI::utilities::rest_download({url => Bio::KBase::utilities::conf("GenomeImporter","data_api_url")."genome/?genome_id=".$args->{id}."&http_accept=application/json",token => Bio::KBase::utilities::token()});
+	$args = Bio::KBase::utilities::args($args,["id","source","workspace"],{token => undef});
+	if (defined($args->{token})) {
+		$d = P3DataAPI->new(Bio::KBase::utilities::conf("GenomeImporter","data_api_url"),$args->{token});
+	} else {
+		$d = P3DataAPI->new();
+	}
+	my $data = Bio::KBase::ObjectAPI::utilities::rest_download({url => Bio::KBase::utilities::conf("GenomeImporter","data_api_url")."genome/?genome_id=".$args->{id}."&http_accept=application/json",token => $args->{token}});
 	$data = $data->[0];
 	$data = Bio::KBase::utilities::args($data,[],{
 		genome_name => "Unknown",
@@ -192,7 +197,7 @@ sub get_PATRIC_genome {
 	my $allftrs = [];
 	while ($start >= 0 && $loopcount < 100) {
 		$loopcount++;#Insurance that no matter what, this loop won't run for more than 100 iterations
-		my $ftrdata = Bio::KBase::ObjectAPI::utilities::rest_download({url => Bio::KBase::utilities::conf("GenomeImporter","data_api_url")."genome_feature/?genome_id=".$args->{id}."&http_accept=application/json&limit(10000,$start)",token => Bio::KBase::utilities::token()},$params);
+		my $ftrdata = Bio::KBase::ObjectAPI::utilities::rest_download({url => Bio::KBase::utilities::conf("GenomeImporter","data_api_url")."genome_feature/?genome_id=".$args->{id}."&http_accept=application/json&limit(10000,$start)",token => $args->{token}},$params);
 		if (defined($ftrdata) && @{$ftrdata} > 0) {
 			push(@{$allftrs},@{$ftrdata});
 		}
@@ -759,6 +764,7 @@ sub import_external_genome
     my $htmlmessage = "<p>";
     for (my $i=0; $i<@{$genomes};$i++) {
     	print "Now importing ".$genomes->[$i]." from ".$args->{source}."\n";
+    	print "Token:".$args->{token}."\n";
     	eval {
 	    	if ($args->{source} eq "pubseed" || $args->{source} eq "coreseed") {
 	    		my $refs = $self->get_SEED_genome({
@@ -770,7 +776,8 @@ sub import_external_genome
 	    		my $refs = $self->get_PATRIC_genome({
 	    			id => $genomes->[$i],
 	    			source => $args->{source},
-	    			workspace => $args->{workspace}
+	    			workspace => $args->{workspace},
+	    			token => $args->{token}
 	    		});
 	    	}
     };
