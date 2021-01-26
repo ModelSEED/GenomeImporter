@@ -26,7 +26,10 @@
             "advanced": true,
             "allow_multiple": false,
             "default_values": [ "" ],
-            "field_type": "text"
+            "field_type": "textarea",
+            "textarea_options" : {
+                 "n_rows" : 1
+            }
         },{
             "id": "source",
             "optional": false,
@@ -61,11 +64,11 @@
                     "narrative_system_variable": "workspace",
                     "target_property": "workspace"
                 },{
-                    "input_parameter": "genome_ids",
-                    "target_property": "genome_ids"
-                },{
                     "input_parameter": "other_args",
                     "target_property": "other_args"
+                },{
+                    "input_parameter": "genome_ids",
+                    "target_property": "genome_ids"
                 },{
                     "input_parameter": "source",
                     "target_property": "source"
