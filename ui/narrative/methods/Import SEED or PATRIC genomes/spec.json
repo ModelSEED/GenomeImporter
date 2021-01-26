@@ -26,7 +26,7 @@
             "advanced": true,
             "allow_multiple": false,
             "default_values": [ "" ],
-            "field_type": "text",
+            "field_type": "text"
         },{
             "id": "source",
             "optional": false,
