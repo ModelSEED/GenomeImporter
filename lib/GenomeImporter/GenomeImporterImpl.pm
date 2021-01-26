@@ -757,27 +757,30 @@ sub import_external_genome
     my $ctx = $GenomeImporter::GenomeImporterServer::CallContext;
     my($output);
     #BEGIN import_external_genome
-    my($args) = @_;
 	$self->util_initialize_call($params,$ctx);
-	$args = Bio::KBase::utilities::args($args,["genome_ids","workspace","source"],{});
-    my $genomes = [split(/[\n;\|]+/,$args->{genome_ids})];
+	my $token = undef;
+	if (defined($params->{other_args})) {
+		$token = $params->{other_args};
+	}
+	delete $params->{other_args};
+	$params = Bio::KBase::utilities::args($params,["genome_ids","workspace","source"],{});
+    my $genomes = [split(/[\n;\|]+/,$params->{genome_ids})];
     my $htmlmessage = "<p>";
     for (my $i=0; $i<@{$genomes};$i++) {
-    	print "Now importing ".$genomes->[$i]." from ".$args->{source}."\n";
-    	print "Token:".$args->{token}."\n";
-    	eval {
-	    	if ($args->{source} eq "pubseed" || $args->{source} eq "coreseed") {
+    	print "Now importing ".$genomes->[$i]." from ".$params->{source}."\n";
+    eval {
+	    	if ($params->{source} eq "pubseed" || $params->{source} eq "coreseed") {
 	    		my $refs = $self->get_SEED_genome({
 	    			id => $genomes->[$i],
-	    			source => $args->{source},
-	    			workspace => $args->{workspace}
+	    			source => $params->{source},
+	    			workspace => $params->{workspace}
 	    		});
-	    	} elsif ($args->{source} eq "patric" || $args->{source} eq "patricrefseq") {
+	    	} elsif ($params->{source} eq "patric" || $params->{source} eq "patricrefseq") {
 	    		my $refs = $self->get_PATRIC_genome({
 	    			id => $genomes->[$i],
-	    			source => $args->{source},
-	    			workspace => $args->{workspace},
-	    			token => $args->{token}
+	    			source => $params->{source},
+	    			workspace => $params->{workspace},
+	    			token => $token
 	    		});
 	    	}
     };
@@ -792,7 +795,7 @@ sub import_external_genome
 		message => $htmlmessage,html=>1,append => 0
 	});
     my $reportout = Bio::KBase::kbaseenv::create_report({
-    		workspace_name => $args->{workspace},
+    		workspace_name => $params->{workspace},
     		report_object_name => Bio::KBase::utilities::processid()
     	});
     $output->{report_ref} = $reportout->{"ref"};

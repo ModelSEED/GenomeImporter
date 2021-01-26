@@ -21,6 +21,13 @@
                  "n_rows" : 10
             }
         },{
+        	"id": "other_args",
+            "optional": true,
+            "advanced": true,
+            "allow_multiple": false,
+            "default_values": [ "" ],
+            "field_type": "text",
+        },{
             "id": "source",
             "optional": false,
             "advanced": false,
@@ -56,6 +63,9 @@
                 },{
                     "input_parameter": "genome_ids",
                     "target_property": "genome_ids"
+                },{
+                    "input_parameter": "other_args",
+                    "target_property": "other_args"
                 },{
                     "input_parameter": "source",
                     "target_property": "source"

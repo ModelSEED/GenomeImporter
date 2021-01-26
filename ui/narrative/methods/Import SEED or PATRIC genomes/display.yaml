@@ -37,5 +37,10 @@ parameters :
             Genome source
         short-hint : |
             Source database from which the genomes should be imported
+    other_args :
+        ui-name : |
+            Other arguments
+        short-hint : |
+            Other arguments for the importer
 description : |
     <p>This is a method designed to permit a user to import a genome from SEED, PATRIC, or RAST.</p>
