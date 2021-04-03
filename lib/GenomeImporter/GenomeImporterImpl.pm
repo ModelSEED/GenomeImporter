@@ -53,31 +53,33 @@ sub query_for_sequences {
        		$query .= $md5s->[$j];
        	}
        	$query .= ")";
-        my $seqres;
-        while (1) {
-        		eval {
-	        		$seqres = [$d->query('feature_sequence',
-	                        ['select', 'sequence,md5,sequence_type'],
-	                        ['in', 'md5', $query])]; 
-	        };
-	        if ($@ && $trycount < 3) {
-	        		sleep(5);
-				$trycount++;
-			} elsif ($@) {
-				$self->error("Too many failures trying to retrieve sequence data!");
-				print $@;
-			} else {
-				last;
-			}
-        } 
-		for my $seqent (@{$seqres}) {
-	    		if (defined($md5_hash->{$seqent->{md5}})) {
-	    			$md5_hash->{$seqent->{md5}}->{$type."_sequence"} = $seqent->{sequence};
-	    			$md5_hash->{$seqent->{md5}}->{$type."_length"} = length($seqent->{sequence});
-	    		} else {
-	    			print $i." ".$end." MD5 not found:".$seqent->{md5}."\n";
-	    		}
-	    	}
+        if (length($query) > 2) {
+	        my $seqres;
+	        while (1) {
+	        		eval {
+		        		$seqres = [$d->query('feature_sequence',
+		                        ['select', 'sequence,md5,sequence_type'],
+		                        ['in', 'md5', $query])]; 
+	        		};
+		        if ($@ && $trycount < 3) {
+		        		sleep(5);
+					$trycount++;
+				} elsif ($@) {
+					Bio::KBase::utilities::error("Too many failures trying to retrieve sequence data!");
+					print $@;
+				} else {
+					last;
+				}
+	        } 
+			for my $seqent (@{$seqres}) {
+		    		if (defined($md5_hash->{$seqent->{md5}})) {
+		    			$md5_hash->{$seqent->{md5}}->{$type."_sequence"} = $seqent->{sequence};
+		    			$md5_hash->{$seqent->{md5}}->{$type."_length"} = length($seqent->{sequence});
+		    		} else {
+		    			print $i." ".$end." MD5 not found:".$seqent->{md5}."\n";
+		    		}
+		    	}
+        }
     }
 }
 
@@ -392,7 +394,7 @@ sub get_SEED_genome {
 		-data => [qw(gc-content dna-size name taxonomy domain genetic-code)]
 	});
 	if (!defined($data->{$args->{id}})) {
-    		$self->error("PubSEED genome ".$args->{id}." not found!");
+    		Bio::KBase::utilities::error("PubSEED genome ".$args->{id}." not found!");
     }
     #Initializing the genome input
     my $genome_input = {
