@@ -160,6 +160,19 @@ sub get_PATRIC_genome {
 		taxon_lineage_names => ["Unknown"],
 		completion_date => undef
 	});
+	#Pulling contig information
+	if (!defined($d)) {
+		$d = P3DataAPI->new();
+	}
+	my @res = $d->query("genome_sequence",
+		["select", "genome_id", "accession", "sequence"],
+		["eq", "genome_id", $args->{id}],
+	);
+	my $contigHash = {};
+	for my $ent (@res) {
+	    $contigHash->{$ent->{accession}} = $ent->{sequence};
+	}
+	#Creating GTO
 	my $genome_input = {
 		id => $args->{id},
 		domain => $data->{taxon_lineage_names}->[0],
@@ -232,25 +245,18 @@ sub get_PATRIC_genome {
 				push(@{$aamd5},$ftrdata->{aa_sequence_md5});
 				$aamd5_feature_hash->{$ftrdata->{aa_sequence_md5}} = $ftrdata;
 			}
-			push(@{$contig_feature_hash->{$ftrdata->{sequence_id}}},$ftrdata);	
+			if (defined($contigHash->{$ftrdata->{sequence_id}})) {
+				push(@{$contig_feature_hash->{$ftrdata->{sequence_id}}},$ftrdata);
+			} else {
+				push(@{$contig_feature_hash->{$ftrdata->{accession}}},$ftrdata);
+			}
 		}
 	}
 	print "Feature contig count:".keys(%{$contig_feature_hash})."\n";
 	#Pulling dna and protein sequences
 	$self->query_for_sequences($namd5,$namd5_feature_hash,"na");
 	$self->query_for_sequences($aamd5,$aamd5_feature_hash,"aa");
-	#Pulling contig information
-	if (!defined($d)) {
-		$d = P3DataAPI->new();
-	}
-	my @res = $d->query("genome_sequence",
-		["select", "genome_id", "accession", "sequence"],
-		["eq", "genome_id", $args->{id}],
-	);
-	my $contigHash = {};
-	for my $ent (@res) {
-	    $contigHash->{$ent->{accession}} = $ent->{sequence};
-	}
+	#Computing size and contig count
 	my $contigarray;
 	my $contigids = [];
 	foreach my $contigid (keys(%{$contigHash})) {
