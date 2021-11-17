@@ -298,7 +298,7 @@ sub get_PATRIC_genome {
 						id => $genome_input->{id}."_".$index,
 						type => $data->{feature_type},
 						aliases=>[[$genome_input->{source}."_id",$data->{patric_id}]],
-						location => [[$data->{sequence_id},$data->{start},$data->{strand},$data->{na_length}]],
+						location => [[$contig,$data->{start},$data->{strand},$data->{na_length}]],
 					};
 					$ftrobj->{location}->[0]->[1] += 0;
 					if (defined($data->{product})) {
