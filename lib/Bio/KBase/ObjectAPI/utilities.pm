@@ -1051,18 +1051,18 @@ sub rest_download {
 		retry => 5,
 		token => undef
 	});
-	my $ua = LWP::UserAgent->new();
+	my $ua = LWP::UserAgent->new( ssl_opts => { verify_hostname => 0, } );
 	if (defined($args->{token})) {
 		$ua->default_header( "Authorization" => $args->{token} );
 	}
+	my $req = HTTP::Request->new( GET => $args->{url});
 	for (my $i=0; $i < $args->{retry}; $i++) {
-		my $res = $ua->get($args->{url});
+		my $res = $ua->request($req);
 		if ($res->{_msg} ne "Bad Gateway") {
 			if (defined($res->{_headers}->{"content-range"}) && $res->{_headers}->{"content-range"} =~ m/\/(.+)/) {
 				$params->{count} = $1;
 			}
 			return Bio::KBase::ObjectAPI::utilities::FROMJSON($res->{_content});
-		} else {
 		}
 	}
 	Bio::KBase::ObjectAPI::utilities::error("REST download failed at URL:".$args->{url});

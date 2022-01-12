@@ -47,13 +47,13 @@ sub create_report {
 	my $kr;
 	if (Bio::KBase::utilities::utilconf("reportimpl") == 1) {
 		require "KBaseReport/KBaseReportImpl.pm";
-		$kr = new KBaseReport::KBaseReportImpl();
+		$kr = KBaseReport::KBaseReportImpl->new();
 		if (!defined($KBaseReport::KBaseReportServer::CallContext)) {
 			$KBaseReport::KBaseReportServer::CallContext = Bio::KBase::utilities::context();
 		}
 	} else {
 		require "KBaseReport/KBaseReportClient.pm";
-		$kr = new KBaseReport::KBaseReportClient(Bio::KBase::utilities::utilconf("call_back_url"),token => Bio::KBase::utilities::token());
+		$kr = KBaseReport::KBaseReportClient->new(Bio::KBase::utilities::utilconf("call_back_url"),token => Bio::KBase::utilities::token());
 	}
 	if (defined(Bio::KBase::utilities::utilconf("debugging")) && Bio::KBase::utilities::utilconf("debugging") == 1) {
 		Bio::KBase::utilities::add_report_file({
@@ -62,7 +62,7 @@ sub create_report {
 			description => "Debug file"
 		});
 	};
-	return $kr->create_extended_report({
+	my $data = {
 		message => Bio::KBase::utilities::report_message(),
         objects_created => $objects_created,
         warnings => $parameters->{warnings},
@@ -72,7 +72,8 @@ sub create_report {
         file_links => Bio::KBase::utilities::report_files(),
         report_object_name => $parameters->{report_object_name},
         workspace_name => $parameters->{workspace_name}
-	});
+	};
+	return $kr->create_extended_report($data);
 }
 
 sub create_context_from_client_config {

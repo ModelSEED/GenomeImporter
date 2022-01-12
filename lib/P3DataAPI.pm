@@ -78,7 +78,7 @@ sub new {
     my $self = {
         url        => $url,
         chunk_size => 50000,
-        ua         => LWP::UserAgent->new(),
+        ua         => LWP::UserAgent->new( ssl_opts => { verify_hostname => 0, } ),
         token      => $token,
         benchmark  => 0,
         reference_genome_cache => undef,
