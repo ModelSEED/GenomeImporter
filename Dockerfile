@@ -11,7 +11,7 @@ MAINTAINER KBase Developer
 # download an inifile reader
 RUN cpanm -i Config::IniFiles
 # download a sequence IO module
-RUN cpanm -i Bio::SeqIO
+#RUN cpanm -i Bio::SeqIO
 
 # -----------------------------------------
 
