@@ -31,6 +31,8 @@ use AssemblyUtil::AssemblyUtilClient;
 use Data::UUID;
 use P3DataAPI;
 
+$ENV{PERL_LWP_SSL_VERIFY_HOSTNAME} = 0;
+
 my $d = undef;
 
 sub query_for_sequences {
@@ -776,8 +778,7 @@ sub import_external_genome
     my $htmlmessage = "<p>";
     for (my $i=0; $i<@{$genomes};$i++) {
     	print "Now importing ".$genomes->[$i]." from ".$params->{source}."\n";
-    print "Token:".$token."\n";
-    eval {
+    	eval {
 	    	if ($params->{source} eq "pubseed" || $params->{source} eq "coreseed") {
 	    		my $refs = $self->get_SEED_genome({
 	    			id => $genomes->[$i],
@@ -792,7 +793,7 @@ sub import_external_genome
 	    			token => $token
 	    		});
 	    	}
-    };
+    	};
     	if ($@) {
 			$htmlmessage .= $genomes->[$i]." failed!<br>".$@;
 		} else {
