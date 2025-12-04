@@ -72,14 +72,37 @@ save_genome_to_json(genome, 'validated_genome.json')
 
 ```python
 # Create synthetic genome from multiple sources
+# Auto-aggregates taxonomy from source genomes
 genome = create_synthetic_genome(
     asv_id='ASV_12345',
     genome_files=['genome1.json', 'genome2.json', 'genome3.json'],
-    taxonomy='Bacteria; Firmicutes; Bacilli',
     output_file='synthetic_asv.json'
 )
 
 print(f"Synthetic genome has {len(genome['features'])} unique features")
+print(f"Consensus taxonomy: {genome['taxonomy']}")
+
+# Taxonomy aggregation saved to: ASVset_taxonomies/ASV_12345.json
+# Format: {"Kingdom": [...], "Phylum": [...], "Class": [...], ...}
+```
+
+### Aggregate Taxonomies
+
+```python
+# Manually aggregate taxonomies from genomes
+from bvbrc_to_kbase_genome import aggregate_taxonomies, load_genome_from_json
+
+genomes = [
+    load_genome_from_json('g1.json'),
+    load_genome_from_json('g2.json'),
+    load_genome_from_json('g3.json')
+]
+
+consensus, tax_dict = aggregate_taxonomies(genomes, 'ASV_001')
+
+print(f"Consensus: {consensus}")
+print(f"Phylum distribution: {tax_dict['Phylum']}")
+# Output: ['Proteobacteria', 'Proteobacteria', 'Firmicutes']
 ```
 
 ### Export to FASTA
@@ -377,6 +400,7 @@ print(df)
 | `load_genome_from_features(genome_id)` | Load from local features/ dir |
 | `load_genome_from_json(json_file)` | Load from genome JSON file |
 | `create_synthetic_genome(asv_id, genome_files)` | Merge multiple genomes |
+| `aggregate_taxonomies(genomes, asv_id)` | Aggregate & select consensus taxonomy |
 | `save_genome_to_json(genome, output_file)` | Save genome to JSON |
 | `create_fasta_from_genome(genome, output_file)` | Export features to FASTA |
 
