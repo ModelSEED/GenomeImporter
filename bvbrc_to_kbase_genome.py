@@ -16,12 +16,16 @@ Usage:
     # From local genome file:
     python bvbrc_to_kbase_genome.py --local <genome_json_file> [--output output_file]
 
+    # From local features directory (features/{genome_id}.json):
+    python bvbrc_to_kbase_genome.py --features <genome_id> [--features-dir features] [--genomes-dir genomes]
+
     # Create synthetic genome from multiple local genomes:
     python bvbrc_to_kbase_genome.py --synthetic <asv_id> --genomes genome1.json,genome2.json [--output output_file]
 
 Example:
     python bvbrc_to_kbase_genome.py --api 1110693.3 --output genome_output.json
     python bvbrc_to_kbase_genome.py --local my_genome.json
+    python bvbrc_to_kbase_genome.py --features 511145.183 --features-dir features --genomes-dir genomes
     python bvbrc_to_kbase_genome.py --synthetic ASV_001 --genomes g1.json,g2.json,g3.json
 """
 
@@ -632,6 +636,244 @@ class LocalGenomeConverter:
 
         return template_genome
 
+    def parse_fasta(self, fasta_file: str) -> Dict[str, str]:
+        """
+        Parse a FASTA file and return a dictionary of sequence_id -> sequence
+        """
+        sequences = {}
+        current_id = None
+        current_seq = []
+
+        with open(fasta_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('>'):
+                    # Save previous sequence
+                    if current_id:
+                        sequences[current_id] = ''.join(current_seq)
+                    # Start new sequence
+                    current_id = line[1:].split()[0]  # Get first part of header
+                    current_seq = []
+                else:
+                    current_seq.append(line)
+
+            # Save last sequence
+            if current_id:
+                sequences[current_id] = ''.join(current_seq)
+
+        return sequences
+
+    def load_genome_from_features_dir(
+        self,
+        genome_id: str,
+        features_dir: str = "features",
+        genomes_dir: str = "genomes",
+        taxonomy: Optional[str] = None,
+        scientific_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Load genome from local BV-BRC feature and sequence files.
+
+        Reads from:
+        - features/{genome_id}.json - Feature metadata from BV-BRC API
+        - genomes/{genome_id}.fna - Genome sequences in FASTA format
+
+        Args:
+            genome_id: The BV-BRC genome ID
+            features_dir: Directory containing feature JSON files (default: "features")
+            genomes_dir: Directory containing genome FASTA files (default: "genomes")
+            taxonomy: Optional taxonomy string
+            scientific_name: Optional scientific name
+
+        Returns:
+            KBase Genome object dictionary
+        """
+        print(f"\nLoading genome {genome_id} from local files...")
+
+        # Construct file paths
+        features_file = os.path.join(features_dir, f"{genome_id}.json")
+        genome_file = os.path.join(genomes_dir, f"{genome_id}.fna")
+
+        # Check if files exist
+        if not os.path.exists(features_file):
+            raise FileNotFoundError(f"Features file not found: {features_file}")
+
+        # Load features
+        print(f"Loading features from {features_file}...")
+        with open(features_file, 'r') as f:
+            features_data = json.load(f)
+
+        print(f"  Loaded {len(features_data)} features")
+
+        # Load sequences if available
+        sequences = {}
+        if os.path.exists(genome_file):
+            print(f"Loading sequences from {genome_file}...")
+            sequences = self.parse_fasta(genome_file)
+            print(f"  Loaded {len(sequences)} contig sequences")
+        else:
+            print(f"  Warning: Genome file not found: {genome_file}")
+            print(f"  Proceeding without sequence data")
+
+        # Calculate contig information
+        contig_ids = sorted(sequences.keys())
+        contig_lengths = [len(sequences[cid]) for cid in contig_ids]
+        total_dna_size = sum(contig_lengths)
+
+        # Calculate GC content if sequences available
+        gc_content = 0.5  # Default
+        if sequences:
+            all_seq = ''.join(sequences.values()).upper()
+            g_count = all_seq.count('G')
+            c_count = all_seq.count('C')
+            total = len(all_seq)
+            if total > 0:
+                gc_content = (g_count + c_count) / total
+
+        # Calculate genome MD5 from sorted contig sequences
+        genome_md5 = ''
+        if sequences:
+            sorted_seqs = [sequences[cid] for cid in contig_ids]
+            genome_md5 = hashlib.md5(''.join(sorted_seqs).encode()).hexdigest()
+
+        # Process features into KBase format
+        kbase_features = []
+        non_coding_features = []
+        feature_counts = defaultdict(int)
+
+        print(f"Processing features...")
+        for idx, feature in enumerate(features_data):
+            kbase_feature = self._convert_bvbrc_feature_to_kbase(
+                feature, idx, genome_id, sequences
+            )
+
+            if kbase_feature:
+                feature_type = kbase_feature['type']
+                feature_counts[feature_type] += 1
+
+                # Categorize feature
+                if feature_type in ['CDS', 'gene', 'protein_encoding_gene']:
+                    kbase_features.append(kbase_feature)
+                    if feature_type in ['CDS', 'protein_encoding_gene']:
+                        feature_counts['protein_encoding_gene'] += 1
+                else:
+                    non_coding_features.append(kbase_feature)
+                    feature_counts['non-protein_encoding_gene'] += 1
+
+        # Create CDS features for all protein-coding genes
+        cdss = []
+        for feature in kbase_features:
+            if feature.get('protein_translation'):  # Has protein sequence
+                cds = feature.copy()
+                cds['id'] = f"{feature['id']}_CDS"
+                cds['type'] = 'CDS'
+                cds['parent_gene'] = feature['id']
+                feature['cdss'] = [cds['id']]
+                cdss.append(cds)
+
+        # Build genome object
+        genome = {
+            'id': genome_id,
+            'scientific_name': scientific_name or genome_id,
+            'domain': 'Bacteria',
+            'taxonomy': taxonomy or '',
+            'genetic_code': 11,
+            'dna_size': total_dna_size,
+            'num_contigs': len(contig_ids),
+            'contig_ids': contig_ids,
+            'contig_lengths': contig_lengths,
+            'gc_content': gc_content,
+            'md5': genome_md5,
+            'molecule_type': 'DNA',
+            'source': 'PATRIC',
+            'source_id': genome_id,
+            'assembly_ref': '',
+            'external_source_origination_date': datetime.now().isoformat(),
+            'notes': f'Imported from local BV-BRC files on {datetime.now().isoformat()}',
+            'features': kbase_features,
+            'non_coding_features': non_coding_features,
+            'cdss': cdss,
+            'mrnas': [],
+            'feature_counts': dict(feature_counts),
+            'publications': [],
+            'genome_tiers': ['User'],
+            'warnings': [],
+            'taxon_ref': '',
+        }
+
+        print(f"Genome object created:")
+        print(f"  - Features: {len(kbase_features)}")
+        print(f"  - Non-coding features: {len(non_coding_features)}")
+        print(f"  - CDS features: {len(cdss)}")
+        print(f"  - Contigs: {len(contig_ids)}")
+        print(f"  - DNA size: {total_dna_size:,} bp")
+        print(f"  - GC content: {gc_content:.2%}")
+
+        return genome
+
+    def _convert_bvbrc_feature_to_kbase(
+        self,
+        feature: Dict[str, Any],
+        index: int,
+        genome_id: str,
+        sequences: Dict[str, str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Convert a BV-BRC feature from features/{genome_id}.json to KBase format.
+
+        BV-BRC feature structure:
+        {
+            "patric_id": "fig|{genome_id}.{type}.{num}",
+            "product": "gene product description",
+            "feature_type": "CDS|rRNA|tRNA|misc",
+            "pgfam_id": "PGF00000001",
+            "plfam_id": "PLF00000123",
+            "figfam_id": "FIG00000456",
+            "annotation": "PATRIC"
+        }
+        """
+        patric_id = feature.get('patric_id', '')
+        product = feature.get('product', '')
+        feature_type = feature.get('feature_type', 'gene')
+
+        # Build functions list
+        functions = []
+        if product:
+            functions.append(product)
+
+        # Build aliases
+        aliases = [['PATRIC_id', patric_id]]
+
+        # Add family IDs as aliases
+        for family_type, ont_key in [('figfam_id', 'FIGFAM'),
+                                      ('pgfam_id', 'PGFAM'),
+                                      ('plfam_id', 'PLFAM')]:
+            family_id = feature.get(family_type, '')
+            if family_id:
+                aliases.append([ont_key, family_id])
+
+        # Create feature ID
+        feature_id = f"{genome_id}_{index}"
+
+        # Build basic feature object
+        kbase_feature = {
+            'id': feature_id,
+            'type': feature_type,
+            'location': [],  # Will be filled if we have sequence location data
+            'functions': functions,
+            'aliases': aliases,
+            'dna_sequence': '',
+            'dna_sequence_length': 0,
+            'md5': '',
+        }
+
+        # Note: The features/{genome_id}.json files from BV-BRC API don't include
+        # sequence data or location data. For complete genomes, you would need to:
+        # 1. Query the full BV-BRC API with more fields, or
+        # 2. Use annotation tools to map features to sequences
+
+        return kbase_feature
+
     def create_fasta_from_genome(self, genome: Dict[str, Any], output_file: str):
         """
         Create a FASTA file from genome features.
@@ -660,6 +902,178 @@ class LocalGenomeConverter:
         print(f"File size: {len(json.dumps(genome)) / 1024 / 1024:.2f} MB")
 
 
+# ============================================================================
+# Convenience Functions for Notebook/Library Usage
+# ============================================================================
+
+def fetch_genome_from_api(genome_id: str, output_file: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Convenience function to fetch a genome from BV-BRC API.
+
+    Args:
+        genome_id: BV-BRC genome ID
+        output_file: Optional path to save JSON output
+
+    Returns:
+        KBase Genome object dictionary
+
+    Example:
+        >>> genome = fetch_genome_from_api('511145.183')
+        >>> genome = fetch_genome_from_api('511145.183', 'ecoli.json')
+    """
+    converter = BVBRCToKBaseConverter(genome_id)
+    genome = converter.build_kbase_genome()
+
+    if output_file:
+        converter.save_genome(genome, output_file)
+
+    return genome
+
+
+def load_genome_from_json(json_file: str, output_file: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Convenience function to load and validate a genome from JSON file.
+
+    Args:
+        json_file: Path to genome JSON file
+        output_file: Optional path to save validated JSON output
+
+    Returns:
+        KBase Genome object dictionary
+
+    Example:
+        >>> genome = load_genome_from_json('my_genome.json')
+        >>> genome = load_genome_from_json('my_genome.json', 'validated.json')
+    """
+    converter = LocalGenomeConverter()
+    genome = converter.load_genome_json(json_file)
+    genome = converter.validate_kbase_genome(genome)
+
+    if output_file:
+        converter.save_genome(genome, output_file)
+
+    return genome
+
+
+def load_genome_from_features(
+    genome_id: str,
+    features_dir: str = "features",
+    genomes_dir: str = "genomes",
+    taxonomy: Optional[str] = None,
+    scientific_name: Optional[str] = None,
+    output_file: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Convenience function to load genome from local BV-BRC feature files.
+
+    Args:
+        genome_id: BV-BRC genome ID
+        features_dir: Directory containing features JSON files
+        genomes_dir: Directory containing genome FASTA files
+        taxonomy: Optional taxonomy string
+        scientific_name: Optional scientific name
+        output_file: Optional path to save JSON output
+
+    Returns:
+        KBase Genome object dictionary
+
+    Example:
+        >>> genome = load_genome_from_features('511145.183')
+        >>> genome = load_genome_from_features('511145.183',
+        ...                                     taxonomy='Bacteria; Proteobacteria',
+        ...                                     output_file='ecoli.json')
+    """
+    converter = LocalGenomeConverter()
+    genome = converter.load_genome_from_features_dir(
+        genome_id=genome_id,
+        features_dir=features_dir,
+        genomes_dir=genomes_dir,
+        taxonomy=taxonomy,
+        scientific_name=scientific_name
+    )
+
+    if output_file:
+        converter.save_genome(genome, output_file)
+
+    return genome
+
+
+def create_synthetic_genome(
+    asv_id: str,
+    genome_files: List[str],
+    taxonomy: Optional[str] = None,
+    template_file: Optional[str] = None,
+    output_file: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Convenience function to create synthetic genome from multiple sources.
+
+    Args:
+        asv_id: Identifier for synthetic genome
+        genome_files: List of paths to source genome JSON files
+        taxonomy: Optional taxonomy string
+        template_file: Optional template genome JSON path
+        output_file: Optional path to save JSON output
+
+    Returns:
+        KBase Genome object dictionary
+
+    Example:
+        >>> genome = create_synthetic_genome('ASV_001',
+        ...                                   ['g1.json', 'g2.json', 'g3.json'])
+        >>> genome = create_synthetic_genome('ASV_001',
+        ...                                   ['g1.json', 'g2.json'],
+        ...                                   taxonomy='Bacteria; Firmicutes',
+        ...                                   output_file='asv_001.json')
+    """
+    converter = LocalGenomeConverter()
+    genome = converter.create_synthetic_genome(
+        asv_id=asv_id,
+        genome_files=genome_files,
+        taxonomy=taxonomy,
+        template_file=template_file
+    )
+
+    if output_file:
+        converter.save_genome(genome, output_file)
+
+    return genome
+
+
+def save_genome_to_json(genome: Dict[str, Any], output_file: str):
+    """
+    Convenience function to save a genome object to JSON.
+
+    Args:
+        genome: KBase Genome object dictionary
+        output_file: Path to save JSON output
+
+    Example:
+        >>> save_genome_to_json(genome, 'my_genome.json')
+    """
+    converter = LocalGenomeConverter()
+    converter.save_genome(genome, output_file)
+
+
+def create_fasta_from_genome(genome: Dict[str, Any], output_file: str):
+    """
+    Convenience function to create FASTA file from genome features.
+
+    Args:
+        genome: KBase Genome object dictionary
+        output_file: Path to save FASTA output
+
+    Example:
+        >>> create_fasta_from_genome(genome, 'features.fasta')
+    """
+    converter = LocalGenomeConverter()
+    converter.create_fasta_from_genome(genome, output_file)
+
+
+# ============================================================================
+# Command-Line Interface
+# ============================================================================
+
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
@@ -674,6 +1088,8 @@ def main():
                            help='Fetch genome from BV-BRC API using genome ID')
     mode_group.add_argument('--local', metavar='JSON_FILE',
                            help='Load genome from local JSON file')
+    mode_group.add_argument('--features', metavar='GENOME_ID',
+                           help='Load genome from local features/{genome_id}.json and genomes/{genome_id}.fna')
     mode_group.add_argument('--synthetic', metavar='ASV_ID',
                            help='Create synthetic genome from multiple local genomes')
 
@@ -683,7 +1099,13 @@ def main():
     parser.add_argument('--template', metavar='FILE',
                        help='Template genome JSON file (optional, for --synthetic mode)')
     parser.add_argument('--taxonomy', metavar='STRING',
-                       help='Taxonomy string (optional, for --synthetic mode)')
+                       help='Taxonomy string (optional, for --synthetic and --features modes)')
+    parser.add_argument('--scientific-name', metavar='STRING',
+                       help='Scientific name (optional, for --features mode)')
+    parser.add_argument('--features-dir', metavar='DIR', default='features',
+                       help='Directory containing feature JSON files (default: features/)')
+    parser.add_argument('--genomes-dir', metavar='DIR', default='genomes',
+                       help='Directory containing genome FASTA files (default: genomes/)')
     parser.add_argument('--output', '-o', metavar='FILE',
                        help='Output JSON file path')
     parser.add_argument('--fasta', metavar='FILE',
@@ -758,7 +1180,32 @@ def main():
             if args.fasta:
                 local_conv.create_fasta_from_genome(genome, args.fasta)
 
-        # Mode 3: Create synthetic genome
+        # Mode 3: Load from features directory
+        elif args.features:
+            genome_id = args.features
+            output_file = args.output or f"{genome_id}_genome.json"
+
+            print(f"Mode: Load from local features directory")
+            print(f"Genome ID: {genome_id}")
+            print(f"Features dir: {args.features_dir}")
+            print(f"Genomes dir: {args.genomes_dir}")
+            print(f"Output file: {output_file}")
+            print()
+
+            local_conv = LocalGenomeConverter()
+            genome = local_conv.load_genome_from_features_dir(
+                genome_id=genome_id,
+                features_dir=args.features_dir,
+                genomes_dir=args.genomes_dir,
+                taxonomy=args.taxonomy,
+                scientific_name=args.scientific_name
+            )
+            local_conv.save_genome(genome, output_file)
+
+            if args.fasta:
+                local_conv.create_fasta_from_genome(genome, args.fasta)
+
+        # Mode 4: Create synthetic genome
         elif args.synthetic:
             if not args.genomes:
                 parser.error("--synthetic mode requires --genomes argument")

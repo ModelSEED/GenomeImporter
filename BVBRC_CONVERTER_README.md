@@ -43,9 +43,30 @@ pip install requests numpy
 
 Note: `numpy` is only required for synthetic genome mode (calculating average GC content).
 
+## Installation
+
+### For Command-Line Use
+Simply download the script and run it directly.
+
+### For Notebook/Library Use
+```python
+# Option 1: Add to Python path
+import sys
+sys.path.append('/path/to/GenomeImporter')
+from bvbrc_to_kbase_genome import *
+
+# Option 2: Run in notebook
+%run bvbrc_to_kbase_genome.py
+
+# Then use classes and functions directly
+genome = load_genome_from_features('511145.183')
+```
+
+See [NOTEBOOK_USAGE.md](NOTEBOOK_USAGE.md) for detailed notebook examples.
+
 ## Usage
 
-The script supports three modes of operation:
+The script supports four modes of operation:
 
 ### Mode 1: Fetch from BV-BRC API
 
@@ -88,7 +109,63 @@ python bvbrc_to_kbase_genome.py --local my_genome.json
 python bvbrc_to_kbase_genome.py --local my_genome.json --fasta features.fasta
 ```
 
-### Mode 3: Create Synthetic Genome (from Multiple Genomes)
+### Mode 3: Load from Features Directory (BV-BRC Local Files)
+
+Load genomes from local BV-BRC feature files without re-downloading from the API.
+
+**File Structure Expected:**
+```
+features/
+  └── {genome_id}.json    # Feature metadata from BV-BRC API
+genomes/
+  └── {genome_id}.fna     # Genome sequences in FASTA format
+```
+
+**Usage:**
+```bash
+# Basic usage (assumes features/ and genomes/ in current directory)
+python bvbrc_to_kbase_genome.py --features <genome_id>
+
+# With custom directories
+python bvbrc_to_kbase_genome.py --features <genome_id> \
+  --features-dir path/to/features \
+  --genomes-dir path/to/genomes
+
+# With taxonomy and scientific name
+python bvbrc_to_kbase_genome.py --features 511145.183 \
+  --taxonomy "Bacteria; Proteobacteria; Gammaproteobacteria; Enterobacterales; Enterobacteriaceae; Escherichia" \
+  --scientific-name "Escherichia coli K-12 MG1655" \
+  --output ecoli_genome.json
+```
+
+**Examples:**
+```bash
+# Load genome from local features directory
+python bvbrc_to_kbase_genome.py --features 511145.183
+
+# With all options
+python bvbrc_to_kbase_genome.py --features 1110693.3 \
+  --features-dir /path/to/features \
+  --genomes-dir /path/to/genomes \
+  --taxonomy "Bacteria; Firmicutes" \
+  --scientific-name "Bacillus subtilis" \
+  --output bacillus.json \
+  --fasta bacillus.fasta
+```
+
+**What's Loaded:**
+- **Features**: JSON array from `features/{genome_id}.json` containing:
+  - `patric_id` - PATRIC feature identifier
+  - `product` - Gene product description
+  - `feature_type` - CDS, rRNA, tRNA, etc.
+  - `pgfam_id`, `plfam_id`, `figfam_id` - Family identifiers
+  - `annotation` - Annotation source
+- **Sequences**: FASTA from `genomes/{genome_id}.fna` containing genome contigs
+- **Calculated**: GC content, genome MD5, DNA size, contig counts
+
+**Note**: The features JSON files from BV-BRC API (downloaded with limited `select` fields) don't include sequence data or precise location coordinates. The script creates features with metadata only. For complete feature sequences, use Mode 1 (API) which fetches full data.
+
+### Mode 4: Create Synthetic Genome (from Multiple Genomes)
 
 ```bash
 # Create synthetic genome from multiple source genomes
