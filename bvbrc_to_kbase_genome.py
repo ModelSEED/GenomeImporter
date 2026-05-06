@@ -394,7 +394,7 @@ class BVBRCToKBaseConverter:
 
 class LocalGenomeConverter:
     """
-    Converter for creating KBase genome objects from local genome JSON files.
+    Converter for creating KBase genome objects from local feature JSON files.
     Adapted from the BV_BRC-Copy1.ipynb notebook code.
     """
 
@@ -403,14 +403,14 @@ class LocalGenomeConverter:
 
     def load_genome_json(self, genome_file: str) -> Dict[str, Any]:
         """Load a genome from a local JSON file"""
-        print(f"Loading genome from {genome_file}...")
+        # print(f"Loading genome from {genome_file}...")
         with open(genome_file, 'r') as f:
             genome = json.load(f)
         return genome
 
     def load_template_genome(self, template_file: str) -> Dict[str, Any]:
         """Load a template genome JSON file"""
-        print(f"Loading template genome from {template_file}...")
+        # print(f"Loading template genome from {template_file}...")
         with open(template_file, 'r') as f:
             template = json.load(f)
         return template
@@ -539,7 +539,7 @@ class LocalGenomeConverter:
             json.dump(output_dict, f, indent=2)
 
         print(f"  Taxonomy saved to {output_file}")
-        print(f"  Consensus taxonomy: {consensus_str}")
+        # print(f"  Consensus taxonomy: {consensus_str}")
 
         return consensus_str, output_dict
 
@@ -551,10 +551,12 @@ class LocalGenomeConverter:
         genomes: Optional[List[Dict[str, Any]]] = None,
         features_dir: str = "features",
         genomes_dir: str = "genomes",
+        metadata_dir: str = "genome_metadata",
         taxonomy: Optional[str] = None,
-        template_file: Optional[str] = None,
+        template_file: Optional[str] = "model_inputs/TemplateGenomes.json",
         save_taxonomy: bool = True,
-        taxonomy_output_dir: str = "ASVset_taxonomies"
+        taxonomy_output_dir: str = "ASVset_taxonomies",
+        genome_output_dir: str = "genome_objects"
     ) -> Dict[str, Any]:
         """
         Create a synthetic genome from multiple source genomes.
@@ -567,6 +569,7 @@ class LocalGenomeConverter:
             genomes: List of pre-loaded genome dictionaries (optional)
             features_dir: Directory containing features JSON files (default: "features")
             genomes_dir: Directory containing genome FASTA files (default: "genomes")
+            metadata_dir: Directory containing genome metadata JSON files (default: "genome_metadata")
             taxonomy: Optional taxonomy string for the synthetic genome.
                      If not provided and save_taxonomy=True, will use consensus taxonomy.
             template_file: Optional path to template genome JSON
@@ -607,13 +610,14 @@ class LocalGenomeConverter:
         source_ids = []
 
         if genome_ids:
-            print(f"Loading {len(genome_ids)} genomes from features directory...")
+            # print(f"Loading {len(genome_ids)} genomes from features directory...")
             for genome_id in genome_ids:
                 try:
                     genome = self.load_genome_from_features_dir(
                         genome_id=genome_id,
                         features_dir=features_dir,
-                        genomes_dir=genomes_dir
+                        genomes_dir=genomes_dir,
+                        metadata_dir=metadata_dir
                     )
                     source_genomes.append(genome)
                     source_ids.append(genome_id)
@@ -622,7 +626,7 @@ class LocalGenomeConverter:
                     continue
 
         elif genome_files:
-            print(f"Loading {len(genome_files)} genomes from JSON files...")
+            # print(f"Loading {len(genome_files)} genomes from JSON files...")
             for genome_file in genome_files:
                 try:
                     genome = self.load_genome_json(genome_file)
@@ -633,7 +637,7 @@ class LocalGenomeConverter:
                     continue
 
         elif genomes:
-            print(f"Using {len(genomes)} pre-loaded genomes...")
+            # print(f"Using {len(genomes)} pre-loaded genomes...")
             source_genomes = genomes
             source_ids = [g.get('id', f'genome_{i}') for i, g in enumerate(genomes)]
 
@@ -815,6 +819,7 @@ class LocalGenomeConverter:
         print(f"  - Total contigs: {template_genome['num_contigs']}")
         print(f"  - Total DNA size: {template_genome['dna_size']:,} bp")
 
+        json.dump(template_genome, open(f"genome_objects/{asv_id}.json", 'w'))
         return template_genome
 
     def parse_fasta(self, fasta_file: str) -> Dict[str, str]:
@@ -849,61 +854,77 @@ class LocalGenomeConverter:
         genome_id: str,
         features_dir: str = "features",
         genomes_dir: str = "genomes",
+        metadata_dir: str = "genome_metadata",
         taxonomy: Optional[str] = None,
         scientific_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Load genome from local BV-BRC feature and sequence files.
+        Load genome from local BV-BRC files (three-file structure).
 
         Reads from:
-        - features/{genome_id}.json - Feature metadata from BV-BRC API
+        - genome_metadata/{genome_id}.json - Taxonomy, GC content, genome stats
         - genomes/{genome_id}.fna - Genome sequences in FASTA format
+        - features/{genome_id}.json - Feature metadata from BV-BRC API
 
         Args:
             genome_id: The BV-BRC genome ID
             features_dir: Directory containing feature JSON files (default: "features")
             genomes_dir: Directory containing genome FASTA files (default: "genomes")
-            taxonomy: Optional taxonomy string
-            scientific_name: Optional scientific name
+            metadata_dir: Directory containing genome metadata files (default: "genome_metadata")
+            taxonomy: Optional taxonomy string (overrides metadata)
+            scientific_name: Optional scientific name (overrides metadata)
 
         Returns:
             KBase Genome object dictionary
         """
-        print(f"\nLoading genome {genome_id} from local files...")
+        # print(f"\nLoading genome {genome_id} from local files...")
 
         # Construct file paths
+        metadata_file = os.path.join(metadata_dir, f"{genome_id}.json")
         features_file = os.path.join(features_dir, f"{genome_id}.json")
         genome_file = os.path.join(genomes_dir, f"{genome_id}.fna")
 
-        # Check if files exist
-        if not os.path.exists(features_file):
-            raise FileNotFoundError(f"Features file not found: {features_file}")
+        # Load genome metadata (preferred source for taxonomy and stats)
+        metadata = {}
+        if os.path.exists(metadata_file):
+            # print(f"Loading metadata from {metadata_file}...")
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+            # print(f"  Loaded metadata for {metadata.get('genome_name', genome_id)}")
+        # else:
+            # print(f"  Warning: Metadata file not found: {metadata_file}")
 
         # Load features
-        print(f"Loading features from {features_file}...")
-        with open(features_file, 'r') as f:
-            features_data = json.load(f)
-
-        print(f"  Loaded {len(features_data)} features")
+        if os.path.exists(features_file):
+            # print(f"Loading features from {features_file}...")
+            with open(features_file, 'r') as f:
+                features_data = json.load(f)
+            # print(f"  Loaded {len(features_data)} features")
+        else:
+            # print(f"  Warning: Features file not found: {features_file}")
+            features_data = []
 
         # Load sequences if available
         sequences = {}
         if os.path.exists(genome_file):
-            print(f"Loading sequences from {genome_file}...")
+            # print(f"Loading sequences from {genome_file}...")
             sequences = self.parse_fasta(genome_file)
-            print(f"  Loaded {len(sequences)} contig sequences")
-        else:
-            print(f"  Warning: Genome file not found: {genome_file}")
-            print(f"  Proceeding without sequence data")
+            # print(f"  Loaded {len(sequences)} contig sequences")
+        # else:
+            # print(f"  Warning: Genome file not found: {genome_file}")
 
         # Calculate contig information
         contig_ids = sorted(sequences.keys())
         contig_lengths = [len(sequences[cid]) for cid in contig_ids]
         total_dna_size = sum(contig_lengths)
 
-        # Calculate GC content if sequences available
+        # Get GC content from metadata (preferred) or calculate from sequences
         gc_content = 0.5  # Default
-        if sequences:
+        if metadata.get('gc_content'):
+            # Metadata has GC content as percentage (0-100), convert to fraction
+            gc_content = float(metadata['gc_content']) / 100.0
+        elif sequences:
+            # Calculate GC content from sequences if not in metadata
             all_seq = ''.join(sequences.values()).upper()
             g_count = all_seq.count('G')
             c_count = all_seq.count('C')
@@ -917,12 +938,49 @@ class LocalGenomeConverter:
             sorted_seqs = [sequences[cid] for cid in contig_ids]
             genome_md5 = hashlib.md5(''.join(sorted_seqs).encode()).hexdigest()
 
+        # Build taxonomy string from metadata (if not provided)
+        if not taxonomy and metadata:
+            # Use taxon_lineage_names if available (most complete)
+            if 'taxon_lineage_names' in metadata and len(metadata['taxon_lineage_names']) > 1:
+                # Skip first element ("cellular organisms") and join the rest
+                taxonomy = '; '.join(metadata['taxon_lineage_names'][1:])
+            else:
+                # Construct from individual taxonomy fields
+                tax_parts = []
+                for level in ['superkingdom', 'kingdom', 'phylum', 'class', 'order',
+                             'family', 'genus', 'species']:
+                    if level in metadata and metadata[level]:
+                        tax_parts.append(metadata[level])
+                taxonomy = '; '.join(tax_parts) if tax_parts else ''
+
+        # Get scientific name from metadata (if not provided)
+        if not scientific_name and metadata:
+            scientific_name = (metadata.get('genome_name') or
+                             metadata.get('species') or
+                             metadata.get('genus', genome_id))
+
+        # Determine domain from metadata
+        domain = 'Bacteria'  # Default
+        if metadata:
+            superkingdom = metadata.get('superkingdom', '').lower()
+            if 'archaea' in superkingdom:
+                domain = 'Archaea'
+            elif 'eukaryot' in superkingdom or 'eukarya' in superkingdom:
+                domain = 'Eukaryota'
+            elif 'bacteria' in superkingdom:
+                domain = 'Bacteria'
+
+        # Use metadata for contig counts if sequences not available
+        if not sequences and metadata:
+            total_dna_size = metadata.get('genome_length', 0)
+            num_contigs = metadata.get('contigs', 0)
+
         # Process features into KBase format
         kbase_features = []
         non_coding_features = []
         feature_counts = defaultdict(int)
 
-        print(f"Processing features...")
+        # print(f"Processing features...")
         for idx, feature in enumerate(features_data):
             kbase_feature = self._convert_bvbrc_feature_to_kbase(
                 feature, idx, genome_id, sequences
@@ -956,11 +1014,11 @@ class LocalGenomeConverter:
         genome = {
             'id': genome_id,
             'scientific_name': scientific_name or genome_id,
-            'domain': 'Bacteria',
+            'domain': domain,
             'taxonomy': taxonomy or '',
             'genetic_code': 11,
             'dna_size': total_dna_size,
-            'num_contigs': len(contig_ids),
+            'num_contigs': len(contig_ids) if sequences else metadata.get('contigs', 0),
             'contig_ids': contig_ids,
             'contig_lengths': contig_lengths,
             'gc_content': gc_content,
@@ -969,7 +1027,7 @@ class LocalGenomeConverter:
             'source': 'PATRIC',
             'source_id': genome_id,
             'assembly_ref': '',
-            'external_source_origination_date': datetime.now().isoformat(),
+            'external_source_origination_date': metadata.get('completion_date', datetime.now().isoformat()),
             'notes': f'Imported from local BV-BRC files on {datetime.now().isoformat()}',
             'features': kbase_features,
             'non_coding_features': non_coding_features,
@@ -982,13 +1040,13 @@ class LocalGenomeConverter:
             'taxon_ref': '',
         }
 
-        print(f"Genome object created:")
-        print(f"  - Features: {len(kbase_features)}")
-        print(f"  - Non-coding features: {len(non_coding_features)}")
-        print(f"  - CDS features: {len(cdss)}")
-        print(f"  - Contigs: {len(contig_ids)}")
-        print(f"  - DNA size: {total_dna_size:,} bp")
-        print(f"  - GC content: {gc_content:.2%}")
+        # print(f"Genome object created:")
+        # print(f"  - Features: {len(kbase_features)}")
+        # print(f"  - Non-coding features: {len(non_coding_features)}")
+        # print(f"  - CDS features: {len(cdss)}")
+        # print(f"  - Contigs: {len(contig_ids)}")
+        # print(f"  - DNA size: {total_dna_size:,} bp")
+        # print(f"  - GC content: {gc_content:.2%}")
 
         return genome
 
@@ -1140,6 +1198,7 @@ def load_genome_from_features(
     genome_id: str,
     features_dir: str = "features",
     genomes_dir: str = "genomes",
+    metadata_dir: str = "genome_metadata",
     taxonomy: Optional[str] = None,
     scientific_name: Optional[str] = None,
     output_file: Optional[str] = None
@@ -1151,8 +1210,9 @@ def load_genome_from_features(
         genome_id: BV-BRC genome ID
         features_dir: Directory containing features JSON files
         genomes_dir: Directory containing genome FASTA files
-        taxonomy: Optional taxonomy string
-        scientific_name: Optional scientific name
+        metadata_dir: Directory containing genome metadata JSON files
+        taxonomy: Optional taxonomy string (overrides metadata)
+        scientific_name: Optional scientific name (overrides metadata)
         output_file: Optional path to save JSON output
 
     Returns:
@@ -1169,6 +1229,7 @@ def load_genome_from_features(
         genome_id=genome_id,
         features_dir=features_dir,
         genomes_dir=genomes_dir,
+        metadata_dir=metadata_dir,
         taxonomy=taxonomy,
         scientific_name=scientific_name
     )
@@ -1214,6 +1275,7 @@ def create_synthetic_genome(
     genomes: Optional[List[Dict[str, Any]]] = None,
     features_dir: str = "features",
     genomes_dir: str = "genomes",
+    metadata_dir: str = "genome_metadata",
     taxonomy: Optional[str] = None,
     template_file: Optional[str] = None,
     save_taxonomy: bool = True,
@@ -1230,6 +1292,7 @@ def create_synthetic_genome(
         genomes: List of pre-loaded genome dictionaries (optional)
         features_dir: Directory containing features JSON files (default: features/)
         genomes_dir: Directory containing genome FASTA files (default: genomes/)
+        metadata_dir: Directory containing genome metadata JSON files (default: genome_metadata/)
         taxonomy: Optional taxonomy string (if not provided, uses consensus from sources)
         template_file: Optional template genome JSON path
         save_taxonomy: If True, saves taxonomy aggregation to JSON (default: True)
@@ -1269,6 +1332,7 @@ def create_synthetic_genome(
         genomes=genomes,
         features_dir=features_dir,
         genomes_dir=genomes_dir,
+        metadata_dir=metadata_dir,
         taxonomy=taxonomy,
         template_file=template_file,
         save_taxonomy=save_taxonomy,
@@ -1349,6 +1413,8 @@ def main():
                        help='Directory containing feature JSON files (default: features/)')
     parser.add_argument('--genomes-dir', metavar='DIR', default='genomes',
                        help='Directory containing genome FASTA files (default: genomes/)')
+    parser.add_argument('--metadata-dir', metavar='DIR', default='genome_metadata',
+                       help='Directory containing genome metadata JSON files (default: genome_metadata/)')
     parser.add_argument('--taxonomy-dir', metavar='DIR', default='ASVset_taxonomies',
                        help='Directory to save taxonomy aggregation JSON (default: ASVset_taxonomies/)')
     parser.add_argument('--no-taxonomy', action='store_true',
@@ -1436,6 +1502,7 @@ def main():
             print(f"Genome ID: {genome_id}")
             print(f"Features dir: {args.features_dir}")
             print(f"Genomes dir: {args.genomes_dir}")
+            print(f"Metadata dir: {args.metadata_dir}")
             print(f"Output file: {output_file}")
             print()
 
@@ -1444,6 +1511,7 @@ def main():
                 genome_id=genome_id,
                 features_dir=args.features_dir,
                 genomes_dir=args.genomes_dir,
+                metadata_dir=args.metadata_dir,
                 taxonomy=args.taxonomy,
                 scientific_name=args.scientific_name
             )
@@ -1479,6 +1547,7 @@ def main():
                 print(f"Source genome IDs: {len(genome_ids)}")
                 print(f"Features dir: {args.features_dir}")
                 print(f"Genomes dir: {args.genomes_dir}")
+                print(f"Metadata dir: {args.metadata_dir}")
             print(f"Output file: {output_file}")
             if not args.no_taxonomy:
                 print(f"Taxonomy directory: {args.taxonomy_dir}")
@@ -1491,6 +1560,7 @@ def main():
                 genome_ids=genome_ids,
                 features_dir=args.features_dir,
                 genomes_dir=args.genomes_dir,
+                metadata_dir=args.metadata_dir,
                 taxonomy=args.taxonomy,
                 template_file=args.template,
                 save_taxonomy=not args.no_taxonomy,
